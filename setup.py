@@ -7,4 +7,5 @@ setup(
     install_requires=["hydra-core"],
     entry_points={},
     packages=find_packages(exclude="test"),
+    include_package_data=True,
 )

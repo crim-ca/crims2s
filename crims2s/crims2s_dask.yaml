@@ -1,0 +1,3 @@
+array:
+  slicing:
+    split_large_chunks: True
