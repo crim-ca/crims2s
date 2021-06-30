@@ -1,0 +1,21 @@
+Variable_shortname,File,Variable_longname,Variable_cfname,Unit,Step_type,Level_type,Level,Number_of_points,Missing_values,Dimensions,filepath
+ci,ecmwf-hindcast-ci-20200102,Sea ice area fraction,siconc,(0 - 1),avg,surface,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-ci-20200102.nc
+gh,ecmwf-hindcast-gh-20200102,Geopotential Height,gh,gpm,instant,isobaricInhPa,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-gh-20200102.nc
+lsm,ecmwf-hindcast-lsm-20200102,Land-sea mask,lsm,(0 - 1),instant,surface,[0],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-lsm-20200102.nc
+msl,ecmwf-hindcast-msl-20200102,Mean sea level pressure,msl,Pa,instant,meanSea,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,meanSea,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-msl-20200102.nc
+q,ecmwf-hindcast-q-20200102,Specific humidity,q,kg kg**-1,instant,isobaricInhPa,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-q-20200102.nc
+rsn,ecmwf-hindcast-rsn-20200102,Snow density,rsn,kg m**-3,avg,surface,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-rsn-20200102.nc
+sm100,ecmwf-hindcast-sm100-20200102,Soil moisture top 100 cm,sm100,kg m**-3,avg,depthBelowLandLayer,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-sm100-20200102.nc
+sm20,ecmwf-hindcast-sm20-20200102,Soil moisture top 20 cm,sm20,kg m**-3,avg,depthBelowLandLayer,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-sm20-20200102.nc
+sp,ecmwf-hindcast-sp-20200102,Surface pressure,sp,Pa,instant,surface,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-sp-20200102.nc
+sst,ecmwf-hindcast-sst-20200102,Sea surface temperature,sst,K,avg,surface,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-sst-20200102.nc
+st100,ecmwf-hindcast-st100-20200102,Soil temperature top 100 cm,st100,K,avg,depthBelowLandLayer,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-st100-20200102.nc
+st20,ecmwf-hindcast-st20-20200102,Soil temperature top 20 cm,st20,K,avg,depthBelowLandLayer,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-st20-20200102.nc
+t,ecmwf-hindcast-t-20200102,Temperature,t,K,instant,isobaricInhPa,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-t-20200102.nc
+2t,ecmwf-hindcast-t2m-20200102,2 metre temperature,t2m,K,avg,heightAboveGround,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-t2m-20200102.nc
+tcc,ecmwf-hindcast-tcc-20200102,Total Cloud Cover,tcc,%,avg,entireAtmosphere,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,entireAtmosphere,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-tcc-20200102.nc
+tcw,ecmwf-hindcast-tcw-20200102,Total column water,tcw,kg m**-2,avg,entireAtmosphere,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,entireAtmosphere,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-tcw-20200102.nc
+tp,ecmwf-hindcast-tp-20200102,Total Precipitation,tp,kg m**-2,accum,surface,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-tp-20200102.nc
+ttr,ecmwf-hindcast-ttr-20200102,Top net thermal radiation,ttr,J m**-2,accum,nominalTop,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,nominal_top,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-ttr-20200102.nc
+u,ecmwf-hindcast-u-20200102,U component of wind,u,m s**-1,instant,isobaricInhPa,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-u-20200102.nc
+v,ecmwf-hindcast-v-20200102,V component of wind,v,m s**-1,instant,isobaricInhPa,[ 0  1  2  3  4  5  6  7  8  9 10],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ecmwf-hindcast-v-20200102.nc

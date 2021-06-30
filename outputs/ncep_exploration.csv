@@ -1,0 +1,20 @@
+Variable_shortname,File,Variable_longname,Variable_cfname,Unit,Step_type,Level_type,Level,Number_of_points,Missing_values,Dimensions,filepath
+ci,ncep-hindcast-ci-20100107,Sea ice area fraction,siconc,(0 - 1),avg,surface,[0 1 2 3],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-ci-20100107.nc
+gh,ncep-hindcast-gh-20100107,Geopotential Height,gh,gpm,instant,isobaricInhPa,[0 1 2 3],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-gh-20100107.nc
+lsm,ncep-hindcast-lsm-20100107,Land-sea mask,lsm,(0 - 1),instant,surface,[0],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-lsm-20100107.nc
+msl,ncep-hindcast-msl-20100107,Mean sea level pressure,msl,Pa,instant,meanSea,[0 1 2 3],29040,9999,meanSea,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-msl-20100107.nc
+q,ncep-hindcast-q-20100107,Specific humidity,q,kg kg**-1,instant,isobaricInhPa,[0 1 2 3],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-q-20100107.nc
+sm100,ncep-hindcast-sm100-20100107,Soil moisture top 100 cm,sm100,kg m**-3,avg,depthBelowLandLayer,[0 1 2 3],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-sm100-20100107.nc
+sm20,ncep-hindcast-sm20-20100107,Soil moisture top 20 cm,sm20,kg m**-3,avg,depthBelowLandLayer,[0 1 2 3],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-sm20-20100107.nc
+sp,ncep-hindcast-sp-20100107,Surface pressure,sp,Pa,instant,surface,[0 1 2 3],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-sp-20100107.nc
+sst,ncep-hindcast-sst-20100107,Sea surface temperature,sst,K,avg,surface,[0 1 2 3],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-sst-20100107.nc
+st100,ncep-hindcast-st100-20100107,Soil temperature top 100 cm,st100,K,avg,depthBelowLandLayer,[0 1 2 3],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-st100-20100107.nc
+st20,ncep-hindcast-st20-20100107,Soil temperature top 20 cm,st20,K,avg,depthBelowLandLayer,[0 1 2 3],29040,9999,depth_below_and_layer,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-st20-20100107.nc
+t,ncep-hindcast-t-20100107,Temperature,t,K,instant,isobaricInhPa,[0 1 2 3],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-t-20100107.nc
+2t,ncep-hindcast-t2m-20100107,2 metre temperature,t2m,K,avg,heightAboveGround,[0 1 2 3],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-t2m-20100107.nc
+tcc,ncep-hindcast-tcc-20100107,Total Cloud Cover,tcc,%,avg,entireAtmosphere,[0 1 2 3],29040,9999,entireAtmosphere,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-tcc-20100107.nc
+tcw,ncep-hindcast-tcw-20100107,Total column water,tcw,kg m**-2,avg,entireAtmosphere,[0 1 2 3],29040,9999,entireAtmosphere,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-tcw-20100107.nc
+tp,ncep-hindcast-tp-20100107,Total Precipitation,tp,kg m**-2,accum,surface,[0 1 2 3],29040,9999,,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-tp-20100107.nc
+ttr,ncep-hindcast-ttr-20100107,Top net thermal radiation,ttr,J m**-2,accum,nominalTop,[0 1 2 3],29040,9999,nominal_top,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-ttr-20100107.nc
+u,ncep-hindcast-u-20100107,U component of wind,u,m s**-1,instant,isobaricInhPa,[0 1 2 3],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-u-20100107.nc
+v,ncep-hindcast-v-20100107,V component of wind,v,m s**-1,instant,isobaricInhPa,[0 1 2 3],29040,9999,plev,***BASEDIR***training-input/0.3.0/netcdf/ncep-hindcast-v-20100107.nc
