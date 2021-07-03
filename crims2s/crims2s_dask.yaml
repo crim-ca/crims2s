@@ -1,3 +1,4 @@
 array:
+  chunk-size: 2G
   slicing:
     split_large_chunks: True

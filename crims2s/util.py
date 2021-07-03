@@ -1,3 +1,6 @@
+import dask.array as da
+
+
 def fix_dataset_dims(d):
     """Given one of the dataset files given by the organizers, fix its
     dimensions so its easier to concatenate and use with xr.open_mfdataset.
@@ -24,5 +27,7 @@ def fix_dataset_dims(d):
     new_d = new_d.transpose(
         "forecast_year", "forecast_dayofyear", *dims, "latitude", "longitude"
     )
+
+    # new_d = new_d.chunk(chunks="auto")
 
     return new_d
