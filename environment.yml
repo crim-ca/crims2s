@@ -3,6 +3,7 @@ channels:
   - pytorch
   - conda-forge
   - defaults
+  - xskillscore
 dependencies:
   - _libgcc_mutex=0.1=main
   - anyio=2.2.0=py38h06a4308_1
