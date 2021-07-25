@@ -22,3 +22,15 @@ you can type
 type pip
 ```
 and validate that the path to pip leads to your conda environment.
+
+
+### Datasets
+
+The `mldataset` module is used to generate ml-ready datasets from the challenge data.
+It also registers a console script through setuptools.
+To generate a whole dataset using the default configuration, use
+```
+s2s_mldataset hydra/launcher=submitit_slurm output_dir=<output_directory> index="range(0,53)" -m
+```
+See `crims2s/conf/mldataset.yaml` for parameters of the generation.
+See `crims2s/conf/hydra/launcher/submitit_slurm.yaml` to configure the Slurm jobs.

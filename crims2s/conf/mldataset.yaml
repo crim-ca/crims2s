@@ -1,0 +1,28 @@
+hydra:
+  job:
+    name: "S2S_MLDataset"
+input_dir: '***BASEDIR***/training-input/'
+input_dir_plev: '***BASEDIR***processed/training-input'
+terciled_obs_file: '***BASEDIR***/renku/hindcast-like-observations_2000-2019_biweekly_terciled.nc'
+output_dir: ???
+n_dask_jobs: 2
+center: 'ecmwf'
+n_weeks:   # Amount of weeks to process. None means all weeks. Useful for debugging.
+flat_fields:
+  - 't2m'
+  - 'tp'
+  - 'sm20'
+  - 'sst'
+  - 'ci'
+  - 'msl'
+plev_fields:
+  "u":
+    - 200
+    - 850
+  "v":
+    - 200
+    - 850
+  "gh":
+    - 1000
+    - 200
+index:
