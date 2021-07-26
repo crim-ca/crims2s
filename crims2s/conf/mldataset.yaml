@@ -4,17 +4,19 @@ hydra:
 input_dir: '***BASEDIR***/training-input/'
 input_dir_plev: '***BASEDIR***processed/training-input'
 terciled_obs_file: '***BASEDIR***/renku/hindcast-like-observations_2000-2019_biweekly_terciled.nc'
+obs_t2m_file: '***BASEDIR***/raw-obs/obs_t2m_raw.nc'
+obs_pr_file: '***BASEDIR***/raw-obs/obs_pr_raw.nc'
 output_dir: ???
-n_dask_jobs: 2
 center: 'ecmwf'
 n_weeks:   # Amount of weeks to process. None means all weeks. Useful for debugging.
 flat_fields:
-  - 't2m'
-  - 'tp'
+  - 'ci'
+  - 'lsm'
+  - 'msl'
   - 'sm20'
   - 'sst'
-  - 'ci'
-  - 'msl'
+  - 't2m'
+  - 'tp'
 plev_fields:
   "u":
     - 200

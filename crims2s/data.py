@@ -10,6 +10,7 @@ FIELD_MEAN = {
     "gh200": 11765.0,
     "gh500": 5524.374,
     "gh850": 1403.0,
+    "lsm": 0.0,
     "msl": 100969.28,
     "siconc": 0.17,
     "sst": 286.96,
@@ -37,6 +38,7 @@ FIELD_STD = {
     "gh200": 605.0,
     "gh500": 341.80862,
     "gh850": 149.6,
+    "lsm": 1.0,
     "msl": 1343.6,
     "siconc": 0.35,
     "sst": 11.73,
@@ -57,11 +59,13 @@ FIELD_STD = {
     "v100": 6.57,
 }
 
+
 def normalize_dataset(dataset):
     for v in dataset.data_vars:
         dataset[v] = (dataset[v] - FIELD_MEAN[v]) / FIELD_STD[v]
 
     return dataset
+
 
 def denormalize_Dataset(dataset):
     for v in dataset.data_vars:

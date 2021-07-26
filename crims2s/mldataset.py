@@ -1,9 +1,7 @@
 """Generate a ML-ready dataset from the S2S competition data."""
 
-import dask.distributed
 import hydra
 import logging
-import os
 import pathlib
 import xarray as xr
 
@@ -16,11 +14,13 @@ _logger = logging.getLogger(__name__)
 
 def datestrings_from_input_dir(input_dir, center):
     input_path = pathlib.Path(input_dir)
-    return [
-        x.stem.split("-")[-1]
-        for x in input_path.iterdir()
-        if "t2m" in x.stem and center in x.stem
-    ]
+    return sorted(
+        [
+            x.stem.split("-")[-1]
+            for x in input_path.iterdir()
+            if "t2m" in x.stem and center in x.stem
+        ]
+    )
 
 
 def preprocess_single_level_file(d):
@@ -53,34 +53,42 @@ def read_plev_fields(input_dir, center, fields, datestring):
 
 
 def make_yearly_examples(
-    dataset, obs_terciled,
+    features, model, obs_terciled,
 ):
     examples = []
-    for i in range(dataset.dims["forecast_year"]):
+    for i in range(features.dims["forecast_year"]):
         to_export_x = (
-            dataset.isel(forecast_year=i, forecast_dayofyear=0)
+            features.isel(forecast_year=i, forecast_dayofyear=0)
             .to_array()
             .rename("x")
             .transpose("lead_time", "latitude", "longitude", "realization", "variable")
         )
+
+        to_export_model = model.isel(forecast_year=i, forecast_dayofyear=0).transpose(
+            "lead_time", "latitude", "longitude", "realization",
+        )
+
         to_export_y = (
             obs_terciled.sel(forecast_time=to_export_x.forecast_time)
             .to_array()
             .rename("y")
             .transpose("latitude", "longitude", "variable", "lead_time", "category")
         )
-        examples.append((to_export_x, to_export_y))
+        examples.append((to_export_x, to_export_y, to_export_model))
 
     return examples
 
 
 def save_examples(examples, output_path):
-    for x, y in examples:
+    for x, y, model, obs in examples:
         _logger.info(f"Saving year: {int(y.forecast_year)}")
-        save_example(x, y, output_path)
+        save_example(x, model, y, obs, output_path)
 
 
-def save_example(x, y, output_path):
+def save_example(x, model, y, obs, output_path):
+    """Save an example to a single netcdf file. x is the input features. obs is the
+    observations for every valid time in the forecast. y is the terciled target
+    distribution (below, within, above normal)."""
     forecast_time = y.forecast_time
     year = int(forecast_time.dt.year)
     month = int(forecast_time.dt.month)
@@ -90,7 +98,30 @@ def save_example(x, y, output_path):
     output_file = output_path / filename
 
     x.to_netcdf(output_file, group="/x", mode="w")
+    model.to_netcdf(output_file, group="/model", mode="a")
     y.to_netcdf(output_file, group="/y", mode="a")
+    obs.to_netcdf(output_file, group="/obs", mode="a")
+
+
+def remove_nans(dataset):
+    """Little hack to make sure we can train an not have everything explode.
+    The data should be approx. zero centered so replacing the nans with zeros should
+    not create extreme values. The dataset contains an LSM so the network should figure
+    out that it should not use those zeroes that are outside of the land sea mask."""
+    return dataset.fillna(0.0)
+
+
+def read_raw_obs(t2m_file, pr_file):
+    t2m = xr.open_dataset(t2m_file)
+    pr = xr.open_dataset(pr_file)
+
+    return xr.merge([t2m, pr])
+
+
+def obs_of_forecast(forecast, raw_obs):
+    valid_time = forecast.valid_time.compute()
+    obs = raw_obs.sel(time=valid_time)
+    return obs
 
 
 @hydra.main(config_path="conf", config_name="mldataset")
@@ -114,6 +145,7 @@ def cli(cfg):
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
     obs_terciled = xr.open_dataset(cfg.terciled_obs_file)
+    raw_obs = read_raw_obs(cfg.obs_t2m_file, cfg.obs_pr_file)
 
     for datestring in datestrings:
         _logger.info(f"Processing datestring {datestring}...")
@@ -127,13 +159,26 @@ def cli(cfg):
             input_dir_plev, cfg.center, cfg.plev_fields, datestring
         )
 
-        ds = xr.merge([flat_dataset, plev_dataset])
-        ds = normalize_dataset(ds)
+        features = xr.merge([flat_dataset, plev_dataset])
+        features = normalize_dataset(features)
+        features = remove_nans(features)
+
+        model = flat_dataset[["t2m", "tp"]]
+        # Super evil temporary hack: the ECMWF data is sprinkled with nans, but it looks
+        # like what are nans should be zeros. So we replace them arbitratily with zeros.
+        model["tp"] = model["tp"].fillna(0.0)
+
+        # A lot of the fields we use have null lead time 0 for ECMWF.
+        # We remove lead time 1 for all the dataset.
+        # Shouldn't matter too much since we are interested in leads 14-42 anyways.
+        features = features.isel(lead_time=slice(1, None))
+        model = model.isel(lead_time=slice(1, None))
 
         _logger.info("Persisting merged dataset...")
-        ds = ds.persist()
+        features = features.persist()
 
-        examples = make_yearly_examples(ds, obs_terciled)
+        examples = make_yearly_examples(features, model, obs_terciled)
+        examples = [(x, y, m, obs_of_forecast(x, raw_obs)) for x, y, m in examples]
 
         _logger.info("Writing examples to disk...")
         save_examples(examples, output_path)
