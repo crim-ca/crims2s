@@ -3,6 +3,10 @@ is normalization of the fields before sending them to a neural net.
 
 See notebook distributions-of-parameters.ipynb"""
 
+import torch
+
+from .util import add_biweekly_dim
+
 FIELD_MEAN = {
     "gh10": 30583.0,
     "gh100": 16070.0,
@@ -67,8 +71,50 @@ def normalize_dataset(dataset):
     return dataset
 
 
-def denormalize_Dataset(dataset):
+def denormalize_dataset(dataset):
     for v in dataset.data_vars:
         dataset[v] = (dataset[v] * FIELD_STD[v]) + FIELD_MEAN[v]
 
     return dataset
+
+
+def apply_to_all(transform, example):
+    """Utility function to apply a transform on all the kews of an example."""
+    new_example = {}
+    for k in example:
+        new_example[k] = transform(example[k])
+
+    return new_example
+
+
+def add_biweekly_dim_transform(example):
+    """Transform that takes a training example and adds the biweekly dimension to it."""
+    return apply_to_all(add_biweekly_dim, example)
+
+
+def example_to_pytorch(example):
+    obs = example["obs"]
+    model = example["model"]
+    features = example["features"]
+    target = example["target"]
+
+    return {
+        "obs_t2m": torch.from_numpy(obs.t2m.data),
+        "obs_tp": torch.from_numpy(obs.tp.data),
+        "features": torch.from_numpy(features.x.data),
+        "model_t2m": torch.from_numpy(model.t2m.data),
+        "model_tp": torch.from_numpy(model.tp.data),
+        "target": torch.from_numpy(target.y.data),
+    }
+
+
+class CompositeTransform:
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, example):
+        transformed_example = example
+        for t in self.transforms:
+            transformed_example = t(transformed_example)
+
+        return transformed_example

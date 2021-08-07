@@ -2,10 +2,11 @@
 
 import hydra
 import logging
+import omegaconf
 import pathlib
 import xarray as xr
 
-from .data import normalize_dataset
+from .transform import normalize_dataset
 from .dask import create_dask_cluster
 from .util import fix_dataset_dims
 
@@ -111,9 +112,9 @@ def remove_nans(dataset):
     return dataset.fillna(0.0)
 
 
-def read_raw_obs(t2m_file, pr_file):
-    t2m = xr.open_dataset(t2m_file)
-    pr = xr.open_dataset(pr_file)
+def read_raw_obs(t2m_file, pr_file, preprocess=lambda x: x):
+    t2m = preprocess(xr.open_dataset(t2m_file))
+    pr = preprocess(xr.open_dataset(pr_file))
 
     return xr.merge([t2m, pr])
 
@@ -128,12 +129,16 @@ def obs_of_forecast(forecast, raw_obs):
 def cli(cfg):
     print(cfg)
 
-    input_dir = hydra.utils.to_absolute_path(cfg.input_dir)
-    input_dir_plev = hydra.utils.to_absolute_path(cfg.input_dir_plev)
     output_dir = hydra.utils.to_absolute_path(cfg.output_dir)
-
     output_path = pathlib.Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path / "confg.yaml", "w") as f:
+        cfg_string = omegaconf.OmegaConf.to_yaml(cfg, resolve=True)
+        f.write(cfg_string)
+
+    input_dir = hydra.utils.to_absolute_path(cfg.input_dir)
+    input_dir_plev = hydra.utils.to_absolute_path(cfg.input_dir_plev)
 
     _logger.info(f"Will output in {output_path}")
 
@@ -145,7 +150,7 @@ def cli(cfg):
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
     obs_terciled = xr.open_dataset(cfg.terciled_obs_file)
-    raw_obs = read_raw_obs(cfg.obs_t2m_file, cfg.obs_pr_file)
+    raw_obs = read_raw_obs(cfg.observations.t2m_file, cfg.observations.pr_file)
 
     for datestring in datestrings:
         _logger.info(f"Processing datestring {datestring}...")
