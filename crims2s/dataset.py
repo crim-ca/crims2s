@@ -18,7 +18,7 @@ class TransformedDataset(torch.utils.data.Dataset):
 
 
 class S2SDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_dir, filter_str=None):
+    def __init__(self, dataset_dir, filter_str=None, include_features=True):
         dataset_path = pathlib.Path(dataset_dir)
         self.files = [
             x
@@ -26,15 +26,21 @@ class S2SDataset(torch.utils.data.Dataset):
             if filter_str is None or filter_str in x.name
         ]
 
+        self.include_features = include_features
+
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
         f = self.files[idx]
-        features = xr.open_dataset(f, group="/x")
         obs = xr.open_dataset(f, group="/obs")
         model = xr.open_dataset(f, group="/model")
         target = xr.open_dataset(f, group="/y")
 
-        return {"features": features, "obs": obs, "model": model, "target": target}
+        example = {"obs": obs, "model": model, "target": target}
+
+        if self.include_features:
+            example["features"] = xr.open_dataset(f, group="/x")
+
+        return example
 

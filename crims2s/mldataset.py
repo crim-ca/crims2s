@@ -1,5 +1,6 @@
 """Generate a ML-ready dataset from the S2S competition data."""
 
+import datetime
 import hydra
 import logging
 import omegaconf
@@ -7,10 +8,83 @@ import pathlib
 import xarray as xr
 
 from .transform import normalize_dataset
-from .dask import create_dask_cluster
 from .util import fix_dataset_dims
 
 _logger = logging.getLogger(__name__)
+
+
+def obs_of_forecast(forecast, raw_obs):
+    valid_time = forecast.valid_time.compute()
+    obs = raw_obs.sel(time=valid_time)
+    return obs
+
+
+class ExamplePartMaker:
+    """Fabricated abstraction that makes part of an example. Abstraction is useful 
+    because it allows the user to choose what he wants his examples made of. Plausible
+    par of examples include features, observations, terciles, etc."""
+
+    def __call__(self, year, example):
+        """Generate the part of an example for a given year."""
+        raise NotImplementedError
+
+
+class FeatureExamplePartMaker(ExamplePartMaker):
+    def __init__(self, features):
+        self.features = features
+
+    def __call__(self, year, example):
+        return (
+            self.features.isel(forecast_dayofyear=0)
+            .sel(forecast_year=year)
+            .to_array()
+            .rename("features")
+            .transpose("lead_time", "latitude", "longitude", "realization", "variable")
+        )
+
+
+class ModelExamplePartMaker(ExamplePartMaker):
+    def __init__(self, model):
+        self.model = model
+
+    def __call__(self, year, example):
+        return (
+            self.model.isel(forecast_dayofyear=0)
+            .sel(forecast_year=year)
+            .transpose("lead_time", "latitude", "longitude", "realization",)
+        )
+
+
+class TargetExamplePartMaker(ExamplePartMaker):
+    def __init__(self, target):
+        self.target = target
+
+    def __call__(self, year, example):
+        model = example["model"]
+
+        return (
+            self.target.sel(forecast_time=model.forecast_time)
+            .to_array()
+            .rename("target")
+            .transpose("latitude", "longitude", "variable", "lead_time", "category")
+        )
+
+
+class ObsExamplePartMaker(ExamplePartMaker):
+    def __init__(self, obs):
+        self.obs = obs
+
+    def __call__(self, year, example):
+        model = example["model"]
+        return obs_of_forecast(model, self.obs)
+
+
+class EdgesExamplePartMaker(ExamplePartMaker):
+    def __init__(self, edges):
+        self.edges = edges
+
+    def __call__(self, year, example):
+        pass
 
 
 def datestrings_from_input_dir(input_dir, center):
@@ -33,11 +107,12 @@ def preprocess_single_level_file(d):
 
 def read_flat_fields(input_dir, center, fields, datestring):
     filenames = [f"{input_dir}/{center}-hindcast-{f}-{datestring}.nc" for f in fields]
-    flat_dataset = (
-        xr.open_mfdataset(filenames, preprocess=fix_dataset_dims)
-        .isel(depth_below_and_layer=0, meanSea=0)
-        .drop(["depth_below_and_layer", "meanSea"])
-    )
+    flat_dataset = xr.open_mfdataset(filenames, preprocess=fix_dataset_dims)
+
+    for dim in ["depth_below_and_layer", "meanSea"]:
+        if dim in flat_dataset.dims:
+            flat_dataset = flat_dataset.isel({dim: 0})
+            flat_dataset = flat_dataset.drop(dim)
 
     return flat_dataset
 
@@ -53,44 +128,43 @@ def read_plev_fields(input_dir, center, fields, datestring):
     return xr.open_mfdataset(plev_files, preprocess=preprocess_single_level_file)
 
 
-def make_yearly_examples(
-    features, model, obs_terciled,
-):
+def make_yearly_examples(features, model, obs_terciled, raw_obs):
     examples = []
     for i in range(features.dims["forecast_year"]):
-        to_export_x = (
-            features.isel(forecast_year=i, forecast_dayofyear=0)
-            .to_array()
-            .rename("x")
-            .transpose("lead_time", "latitude", "longitude", "realization", "variable")
-        )
+        year = features.forecast_year[i]
+        example = {}
 
-        to_export_model = model.isel(forecast_year=i, forecast_dayofyear=0).transpose(
-            "lead_time", "latitude", "longitude", "realization",
-        )
+        feature_maker = FeatureExamplePartMaker(features)
+        example["features"] = feature_maker(year, example)
 
-        to_export_y = (
-            obs_terciled.sel(forecast_time=to_export_x.forecast_time)
-            .to_array()
-            .rename("y")
-            .transpose("latitude", "longitude", "variable", "lead_time", "category")
-        )
-        examples.append((to_export_x, to_export_y, to_export_model))
+        model_maker = ModelExamplePartMaker(model)
+        example["model"] = model_maker(year, example)
+
+        target_maker = TargetExamplePartMaker(obs_terciled)
+        example["target"] = target_maker(year, example)
+
+        obs_maker = ObsExamplePartMaker(raw_obs)
+        example["obs"] = obs_maker(year, example)
+
+        week = example["features"].forecast_time.dt.weekofyear
+        _logger.debug(f"Selecting climatology from week of year {week}")
+
+        examples.append(example)
 
     return examples
 
 
 def save_examples(examples, output_path):
-    for x, y, model, obs in examples:
-        _logger.info(f"Saving year: {int(y.forecast_year)}")
-        save_example(x, model, y, obs, output_path)
+    for e in examples:
+        _logger.info(f"Saving year: {int(e['target'].forecast_year)}")
+        save_example(e, output_path)
 
 
-def save_example(x, model, y, obs, output_path):
+def save_example(example, output_path: pathlib.Path):
     """Save an example to a single netcdf file. x is the input features. obs is the
     observations for every valid time in the forecast. y is the terciled target
     distribution (below, within, above normal)."""
-    forecast_time = y.forecast_time
+    forecast_time = example["target"].forecast_time
     year = int(forecast_time.dt.year)
     month = int(forecast_time.dt.month)
     day = int(forecast_time.dt.day)
@@ -98,10 +172,13 @@ def save_example(x, model, y, obs, output_path):
 
     output_file = output_path / filename
 
-    x.to_netcdf(output_file, group="/x", mode="w")
-    model.to_netcdf(output_file, group="/model", mode="a")
-    y.to_netcdf(output_file, group="/y", mode="a")
-    obs.to_netcdf(output_file, group="/obs", mode="a")
+    if output_file.exists():
+        _logger.info(f"Target file {output_file} already exists. Replacing.")
+        output_file.unlink()
+
+    for k in example:
+        mode = "a" if output_file.exists() else "w"
+        example[k].to_netcdf(output_file, group=f"/{k}", mode=mode, compute=True)
 
 
 def remove_nans(dataset):
@@ -117,12 +194,6 @@ def read_raw_obs(t2m_file, pr_file, preprocess=lambda x: x):
     pr = preprocess(xr.open_dataset(pr_file))
 
     return xr.merge([t2m, pr])
-
-
-def obs_of_forecast(forecast, raw_obs):
-    valid_time = forecast.valid_time.compute()
-    obs = raw_obs.sel(time=valid_time)
-    return obs
 
 
 @hydra.main(config_path="conf", config_name="mldataset")
@@ -149,6 +220,7 @@ def cli(cfg):
 
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
+    edges = xr.open_dataset(cfg.edges_file)
     obs_terciled = xr.open_dataset(cfg.terciled_obs_file)
     raw_obs = read_raw_obs(cfg.observations.t2m_file, cfg.observations.pr_file)
 
@@ -157,14 +229,19 @@ def cli(cfg):
 
         _logger.info("Reading flat fields...")
         flat_dataset = read_flat_fields(
-            cfg.input_dir, cfg.center, cfg.flat_fields, datestring
-        )
-        _logger.info("Reading fields with vertical levels...")
-        plev_dataset = read_plev_fields(
-            input_dir_plev, cfg.center, cfg.plev_fields, datestring
+            cfg.input_dir, cfg.center, cfg.fields.flat, datestring
         )
 
-        features = xr.merge([flat_dataset, plev_dataset])
+        _logger.info("Reading fields with vertical levels...")
+        plev_fields = cfg.fields.get("plev", dict())
+        datasets = [flat_dataset]
+        if plev_fields:
+            plev_dataset = read_plev_fields(
+                input_dir_plev, cfg.center, plev_fields, datestring
+            )
+            datasets.append(plev_dataset)
+
+        features = xr.merge(datasets)
         features = normalize_dataset(features)
         features = remove_nans(features)
 
@@ -182,8 +259,7 @@ def cli(cfg):
         _logger.info("Persisting merged dataset...")
         features = features.persist()
 
-        examples = make_yearly_examples(features, model, obs_terciled)
-        examples = [(x, y, m, obs_of_forecast(x, raw_obs)) for x, y, m in examples]
+        examples = make_yearly_examples(features, model, obs_terciled, raw_obs)
 
         _logger.info("Writing examples to disk...")
         save_examples(examples, output_path)
