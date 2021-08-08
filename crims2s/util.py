@@ -59,6 +59,9 @@ ECMWF_FORECASTS = [
     (12, 31),
 ]
 
+# The last date at which we can use the obs for training.
+TEST_THRESHOLD = "2019-12-31"
+
 
 def fix_dataset_dims(d):
     """Given one of the dataset files given by the organizers, fix its
@@ -70,12 +73,10 @@ def fix_dataset_dims(d):
 
     month = int(d.forecast_time[0].dt.month)
     day = int(d.forecast_time[0].dt.day)
-
-    labels = np.empty((1,), dtype=object)
-    labels[0] = (month, day)
+    label = f"{month:02}{day:02}"
 
     new_d = d.expand_dims("forecast_monthday").assign_coords(
-        forecast_monthday=xr.DataArray(labels, dims="forecast_monthday")
+        forecast_monthday=xr.DataArray([label], dims="forecast_monthday")
     )
     new_d = new_d.assign_coords(forecast_year=new_d.forecast_time.dt.year).swap_dims(
         forecast_time="forecast_year"
@@ -115,7 +116,7 @@ def add_biweekly_dim(dataset):
         weeklys.append(weekly_forecast)
 
     with_weekly = xr.concat(weeklys, dim="biweekly_forecast").transpose(
-        "forecast_year", "forecast_dayofyear", "biweekly_forecast", ...
+        "forecast_year", "forecast_monthday", "biweekly_forecast", ...
     )
 
     # Fix the validity time for the first step (which we don't have any data for).

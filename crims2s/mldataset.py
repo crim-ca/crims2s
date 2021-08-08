@@ -4,17 +4,21 @@ import datetime
 import hydra
 import logging
 import omegaconf
+import pandas as pd
 import pathlib
 import xarray as xr
 
 from .transform import normalize_dataset
-from .util import fix_dataset_dims
+from .util import fix_dataset_dims, ECMWF_FORECASTS, TEST_THRESHOLD
 
 _logger = logging.getLogger(__name__)
 
 
 def obs_of_forecast(forecast, raw_obs):
+    limit = pd.to_datetime("2020-01-01")
     valid_time = forecast.valid_time.compute()
+    valid_time = forecast.valid_time.where(forecast.valid_time < limit, drop=True)
+
     obs = raw_obs.sel(time=valid_time)
     return obs
 
@@ -35,7 +39,7 @@ class FeatureExamplePartMaker(ExamplePartMaker):
 
     def __call__(self, year, example):
         return (
-            self.features.isel(forecast_dayofyear=0)
+            self.features.isel(forecast_monthday=0)
             .sel(forecast_year=year)
             .to_array()
             .rename("features")
@@ -49,7 +53,7 @@ class ModelExamplePartMaker(ExamplePartMaker):
 
     def __call__(self, year, example):
         return (
-            self.model.isel(forecast_dayofyear=0)
+            self.model.isel(forecast_monthday=0)
             .sel(forecast_year=year)
             .transpose("lead_time", "latitude", "longitude", "realization",)
         )
@@ -84,7 +88,13 @@ class EdgesExamplePartMaker(ExamplePartMaker):
         self.edges = edges
 
     def __call__(self, year, example):
-        pass
+        model = example["model"]
+        month = int(model.forecast_time.dt.month)
+        day = int(model.forecast_time.dt.day)
+
+        forecast_idx = ECMWF_FORECASTS.index((month, day))
+
+        return self.edges.isel(weekofyear=forecast_idx)
 
 
 def datestrings_from_input_dir(input_dir, center):
@@ -128,26 +138,12 @@ def read_plev_fields(input_dir, center, fields, datestring):
     return xr.open_mfdataset(plev_files, preprocess=preprocess_single_level_file)
 
 
-def make_yearly_examples(features, model, obs_terciled, raw_obs):
+def make_yearly_examples(years, makers):
     examples = []
-    for i in range(features.dims["forecast_year"]):
-        year = features.forecast_year[i]
+    for year in years:
         example = {}
-
-        feature_maker = FeatureExamplePartMaker(features)
-        example["features"] = feature_maker(year, example)
-
-        model_maker = ModelExamplePartMaker(model)
-        example["model"] = model_maker(year, example)
-
-        target_maker = TargetExamplePartMaker(obs_terciled)
-        example["target"] = target_maker(year, example)
-
-        obs_maker = ObsExamplePartMaker(raw_obs)
-        example["obs"] = obs_maker(year, example)
-
-        week = example["features"].forecast_time.dt.weekofyear
-        _logger.debug(f"Selecting climatology from week of year {week}")
+        for name, part_maker in makers:
+            example[name] = part_maker(year, example)
 
         examples.append(example)
 
@@ -259,7 +255,15 @@ def cli(cfg):
         _logger.info("Persisting merged dataset...")
         features = features.persist()
 
-        examples = make_yearly_examples(features, model, obs_terciled, raw_obs)
+        years = features.forecast_year
+        part_makers = [
+            ("features", FeatureExamplePartMaker(features)),
+            ("model", ModelExamplePartMaker(model)),
+            ("target", TargetExamplePartMaker(obs_terciled)),
+            ("obs", ObsExamplePartMaker(raw_obs)),
+            ("edges", EdgesExamplePartMaker(edges)),
+        ]
+        examples = make_yearly_examples(years, part_makers)
 
         _logger.info("Writing examples to disk...")
         save_examples(examples, output_path)
