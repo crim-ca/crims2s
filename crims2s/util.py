@@ -2,6 +2,63 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+# Month day list of the forecasts ECMWF does each year.
+ECMWF_FORECASTS = [
+    (1, 2),
+    (1, 9),
+    (1, 16),
+    (1, 23),
+    (1, 30),
+    (2, 6),
+    (2, 13),
+    (2, 20),
+    (2, 27),
+    (3, 5),
+    (3, 12),
+    (3, 19),
+    (3, 26),
+    (4, 2),
+    (4, 9),
+    (4, 16),
+    (4, 23),
+    (4, 30),
+    (5, 7),
+    (5, 14),
+    (5, 21),
+    (5, 28),
+    (6, 4),
+    (6, 11),
+    (6, 18),
+    (6, 25),
+    (7, 2),
+    (7, 9),
+    (7, 16),
+    (7, 23),
+    (7, 30),
+    (8, 6),
+    (8, 13),
+    (8, 20),
+    (8, 27),
+    (9, 3),
+    (9, 10),
+    (9, 17),
+    (9, 24),
+    (10, 1),
+    (10, 8),
+    (10, 15),
+    (10, 22),
+    (10, 29),
+    (11, 5),
+    (11, 12),
+    (11, 19),
+    (11, 26),
+    (12, 3),
+    (12, 10),
+    (12, 17),
+    (12, 24),
+    (12, 31),
+]
+
 
 def fix_dataset_dims(d):
     """Given one of the dataset files given by the organizers, fix its
@@ -11,10 +68,14 @@ def fix_dataset_dims(d):
       d. xr.Dataset. The dataset you get when you open one of the provided files.
     """
 
-    day_of_year = d.forecast_time[0].dt.dayofyear.data.item()
+    month = int(d.forecast_time[0].dt.month)
+    day = int(d.forecast_time[0].dt.day)
 
-    new_d = d.expand_dims("forecast_dayofyear").assign_coords(
-        forecast_dayofyear=[day_of_year]
+    labels = np.empty((1,), dtype=object)
+    labels[0] = (month, day)
+
+    new_d = d.expand_dims("forecast_monthday").assign_coords(
+        forecast_monthday=xr.DataArray(labels, dims="forecast_monthday")
     )
     new_d = new_d.assign_coords(forecast_year=new_d.forecast_time.dt.year).swap_dims(
         forecast_time="forecast_year"
@@ -23,11 +84,11 @@ def fix_dataset_dims(d):
     # Reorder the dimensions to something that is more intuitive (according to me).
     dims = set(new_d.dims)
     dims.difference_update(
-        ("forecast_dayofyear", "forecast_year", "latitude", "longitude")
+        ("forecast_monthday", "forecast_year", "latitude", "longitude")
     )
 
     new_d = new_d.transpose(
-        "forecast_year", "forecast_dayofyear", *dims, "latitude", "longitude"
+        "forecast_year", "forecast_monthday", *dims, "latitude", "longitude"
     )
 
     # new_d = new_d.chunk(chunks="auto")
