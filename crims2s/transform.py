@@ -4,8 +4,9 @@ is normalization of the fields before sending them to a neural net.
 See notebook distributions-of-parameters.ipynb"""
 
 import torch
+import xarray as xr
 
-from .util import add_biweekly_dim
+from .util import add_biweekly_dim, obs_to_biweekly, std_estimator
 
 FIELD_MEAN = {
     "gh10": 30583.0,
@@ -87,43 +88,51 @@ def apply_to_all(transform, example):
     return new_example
 
 
-def add_biweekly_dim_transform(example):
+class AddBiweeklyDimTransform:
     """Transform that takes a training example and adds the biweekly dimension to it."""
-    new_example = {}
-    for k in example:
-        if k in ["model", "obs", "features"]:
-            new_example[k] = add_biweekly_dim(example[k])
-        else:
-            new_example[k] = example[k]
 
-    return new_example
+    def __init__(self):
+        pass
+
+    def __call__(self, example):
+        new_example = {}
+        for k in example:
+            if k in ["model", "obs", "features"]:
+                new_example[k] = add_biweekly_dim(example[k])
+            else:
+                new_example[k] = example[k]
+
+        return new_example
 
 
-def add_metadata(example):
+class AddMetadata:
     """Add various metadata to the example dict."""
-    model = example["model"]
-    month = int(model.forecast_time.dt.month)
-    day = int(model.forecast_time.dt.day)
-    example["monthday"] = f"{month:02}{day:02}"
 
-    return example
+    def __call__(self, example):
+        model = example["model"]
+        month = int(model.forecast_time.dt.month)
+        day = int(model.forecast_time.dt.day)
+        example["monthday"] = f"{month:02}{day:02}"
+
+        return example
 
 
-def example_to_pytorch(example):
-    pytorch_example = {}
+class ExampleToPytorch:
+    def __call__(self, example):
+        pytorch_example = {}
 
-    for dataset_name in ["obs", "model", "features", "target", "edges"]:
-        if dataset_name in example:
-            dataset = example[dataset_name]
-            for variable in dataset.data_vars:
-                pytorch_example[f"{dataset_name}_{variable}"] = torch.from_numpy(
-                    dataset[variable].data
-                )
+        for dataset_name in ["obs", "model", "features", "target", "edges"]:
+            if dataset_name in example:
+                dataset = example[dataset_name]
+                for variable in dataset.data_vars:
+                    pytorch_example[f"{dataset_name}_{variable}"] = torch.from_numpy(
+                        dataset[variable].data
+                    )
 
-    for k in ["monthday"]:
-        pytorch_example[k] = example[k]
+        for k in ["monthday"]:
+            pytorch_example[k] = example[k]
 
-    return pytorch_example
+        return pytorch_example
 
 
 class CompositeTransform:
@@ -136,3 +145,30 @@ class CompositeTransform:
             transformed_example = t(transformed_example)
 
         return transformed_example
+
+
+def model_to_distribution(model):
+    model_tp_mean = model.tp.isel(lead_time=-1).mean(dim="realization").rename("tp_mu")
+    model_tp_std = std_estimator(model.tp.isel(lead_time=-1), dim="realization").rename(
+        "tp_sigma"
+    )
+
+    model_t2m_mean = model.t2m.mean(dim=["lead_time", "realization"]).rename("t2m_mu")
+    model_t2m_std = std_estimator(model.t2m, dim=["lead_time", "realization"]).rename(
+        "t2m_sigma"
+    )
+
+    return (
+        xr.merge([model_tp_mean, model_tp_std, model_t2m_mean, model_t2m_std])
+        .drop("lead_time")
+        .rename(biweekly_forecast="lead_time")
+    )
+
+
+class LinearModelAdapter:
+    def __call__(self, example):
+        example["model"] = model_to_distribution(example["model"])
+        example["obs"] = obs_to_biweekly(example["obs"])
+
+        return example
+

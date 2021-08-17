@@ -51,6 +51,7 @@ class S2SDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         f = self.files[idx]
+
         obs = xr.open_dataset(f, group="/obs")
         model = xr.open_dataset(f, group="/model")
         target = xr.open_dataset(f, group="/target")
@@ -62,4 +63,3 @@ class S2SDataset(torch.utils.data.Dataset):
             example["features"] = xr.open_dataset(f, group="/features")
 
         return example
-

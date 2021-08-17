@@ -154,3 +154,29 @@ def add_biweekly_dim(dataset):
 
     return with_weekly
 
+
+def std_estimator(dataset, dim=None):
+    """Estimator for the sigma parameter of a normal distribution. It is different from 
+    calling std directly because it uses n - 1 on the denominator instead of n."""
+    dataset_mean = dataset.mean(dim=dim)
+
+    if dim is None:
+        dim_sizes = [dataset.sizes[x] for x in dataset_mean.dims]
+    elif isinstance(dim, str):
+        dim_sizes = dataset.sizes[dim]
+    else:
+        dim_sizes = [dataset.sizes[x] for x in dim]
+
+    n = np.prod(dim_sizes)
+
+    return xr.ufuncs.sqrt(
+        xr.ufuncs.square(dataset - dataset_mean).sum(dim=dim) / (n - 1)
+    )
+
+
+def obs_to_biweekly(obs):
+    """Given an xarray Dataset that contains observations, aggregate them into a
+    biweekly format."""
+    aggregate_obs_tp = obs.pr.sum(dim="lead_time", min_count=2).rename("tp")
+    aggregate_obs_t2m = obs.t2m.mean(dim="lead_time")
+    return xr.merge([aggregate_obs_tp, aggregate_obs_t2m])
