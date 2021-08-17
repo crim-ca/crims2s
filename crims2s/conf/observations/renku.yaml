@@ -1,0 +1,2 @@
+t2m_file: '***BASEDIR***/obs-renku-processed/obs_t2m_interp_remask.nc'
+pr_file: '***BASEDIR***/obs-renku-processed/obs_pr_interp_remask.nc'
