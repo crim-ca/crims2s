@@ -89,23 +89,41 @@ def apply_to_all(transform, example):
 
 def add_biweekly_dim_transform(example):
     """Transform that takes a training example and adds the biweekly dimension to it."""
-    return apply_to_all(add_biweekly_dim, example)
+    new_example = {}
+    for k in example:
+        if k in ["model", "obs", "features"]:
+            new_example[k] = add_biweekly_dim(example[k])
+        else:
+            new_example[k] = example[k]
+
+    return new_example
+
+
+def add_metadata(example):
+    """Add various metadata to the example dict."""
+    model = example["model"]
+    month = int(model.forecast_time.dt.month)
+    day = int(model.forecast_time.dt.day)
+    example["monthday"] = f"{month:02}{day:02}"
+
+    return example
 
 
 def example_to_pytorch(example):
-    obs = example["obs"]
-    model = example["model"]
-    features = example["features"]
-    target = example["target"]
+    pytorch_example = {}
 
-    return {
-        "obs_t2m": torch.from_numpy(obs.t2m.data),
-        "obs_tp": torch.from_numpy(obs.tp.data),
-        "features": torch.from_numpy(features.x.data),
-        "model_t2m": torch.from_numpy(model.t2m.data),
-        "model_tp": torch.from_numpy(model.tp.data),
-        "target": torch.from_numpy(target.y.data),
-    }
+    for dataset_name in ["obs", "model", "features", "target", "edges"]:
+        if dataset_name in example:
+            dataset = example[dataset_name]
+            for variable in dataset.data_vars:
+                pytorch_example[f"{dataset_name}_{variable}"] = torch.from_numpy(
+                    dataset[variable].data
+                )
+
+    for k in ["monthday"]:
+        pytorch_example[k] = example[k]
+
+    return pytorch_example
 
 
 class CompositeTransform:
