@@ -15,16 +15,21 @@ _logger = logging.getLogger(__name__)
 
 
 def obs_of_forecast(forecast, raw_obs):
-    limit = pd.to_datetime("2020-01-01")
+    # 2019-11-20 is the last forecast for which we have full observations.
+    # We could transfer the latter dates to our test set.
+    limit = pd.to_datetime(TEST_THRESHOLD)
     valid_time = forecast.valid_time.compute()
-    valid_time = forecast.valid_time.where(forecast.valid_time < limit, drop=True)
+    valid_time = forecast.valid_time.where(
+        forecast.valid_time < limit, drop=True
+    ).compute()
 
     obs = raw_obs.sel(time=valid_time)
+
     return obs
 
 
 class ExamplePartMaker:
-    """Fabricated abstraction that makes part of an example. Abstraction is useful 
+    """Fabricated abstraction that makes part of an example. Abstraction is useful
     because it allows the user to choose what he wants his examples made of. Plausible
     par of examples include features, observations, terciles, etc."""
 
@@ -43,7 +48,7 @@ class FeatureExamplePartMaker(ExamplePartMaker):
             .sel(forecast_year=year)
             .to_array()
             .rename("features")
-            .transpose("lead_time", "latitude", "longitude", "realization", "variable")
+            .transpose("lead_time", "latitude", "longitude", "realization", "variable",)
         )
 
 
@@ -70,7 +75,7 @@ class TargetExamplePartMaker(ExamplePartMaker):
             self.target.sel(forecast_time=model.forecast_time)
             .to_array()
             .rename("target")
-            .transpose("latitude", "longitude", "variable", "lead_time", "category")
+            .transpose("latitude", "longitude", "variable", "lead_time", "category",)
         )
 
 
@@ -173,6 +178,7 @@ def save_example(example, output_path: pathlib.Path):
         output_file.unlink()
 
     for k in example:
+        _logger.debug(f"Saving group {k}.")
         mode = "a" if output_file.exists() else "w"
         example[k].to_netcdf(output_file, group=f"/{k}", mode=mode, compute=True)
 
@@ -255,7 +261,12 @@ def cli(cfg):
         _logger.info("Persisting merged dataset...")
         features = features.persist()
 
-        years = features.forecast_year
+        years = model.forecast_year[model.forecast_time < pd.to_datetime("2019-11-20")]
+        if cfg.year is not None:
+            years = years.where(years == cfg.year, drop=True)
+
+        _logger.info(f"Will make examples for years: {years.data}")
+
         part_makers = [
             ("features", FeatureExamplePartMaker(features)),
             ("model", ModelExamplePartMaker(model)),

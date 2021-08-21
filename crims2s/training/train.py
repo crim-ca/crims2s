@@ -66,11 +66,22 @@ def cli(cfg):
 
     lightning_module = S2SLightningModule(model, optimizer)
 
+    tensorboard = pl.loggers.TensorBoardLogger("./tensorboard")
+    tensorboard.log_hyperparams(cfg)
+
+    mlflow = pl.loggers.MLFlowLogger(
+        cfg.logging.experiment_name,
+        tracking_uri=cfg.logging.mlflow_uri,
+        tags={"user": cfg.user},
+    )
+    mlflow.log_hyperparams(cfg)
+
     trainer = pl.Trainer(
         devices=cfg.devices,
         accelerator=cfg.accelerator,
         max_epochs=cfg.max_epochs,
         log_every_n_steps=1,
+        logger=[tensorboard, mlflow],
     )
 
     if cfg.lr_find:
