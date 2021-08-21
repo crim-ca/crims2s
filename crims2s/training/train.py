@@ -2,7 +2,7 @@ import hydra
 import logging
 import os
 import pytorch_lightning as pl
-from pytorch_lightning.accelerators import accelerator
+import pytorch_lightning.callbacks as callbacks
 import torch
 
 from ..dataset import S2SDataset, TransformedDataset
@@ -76,12 +76,16 @@ def cli(cfg):
     )
     mlflow.log_hyperparams(cfg)
 
+    early_stopping = callbacks.EarlyStopping(monitor="val_loss")
+    checkpointer = callbacks.ModelCheckpoint(monitor="val_loss")
+
     trainer = pl.Trainer(
         devices=cfg.devices,
         accelerator=cfg.accelerator,
         max_epochs=cfg.max_epochs,
         log_every_n_steps=1,
         logger=[tensorboard, mlflow],
+        callbacks=[early_stopping, checkpointer],
         default_root_dir="./lightning/",
     )
 

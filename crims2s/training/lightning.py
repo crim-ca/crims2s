@@ -5,7 +5,9 @@ import pytorch_lightning as pl
 
 
 class S2SLightningModule(pl.LightningModule):
-    def __init__(self, model, optimizer):
+    # We specify default values for model and optimizer even though it doesn't make sense.
+    # We do this so that the module can be brought back to life with load_from_checkpoint.
+    def __init__(self, model=None, optimizer=None):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -32,11 +34,6 @@ class S2SLightningModule(pl.LightningModule):
             "LL/TP/Train": tp_loss.detach(),
         }
 
-    def training_epoch_end(self, outs):
-        for key in ["LL/All/Train", "LL/T2M/Train", "LL/TP/Train"]:
-            mean_value = np.array([float(x[key]) for x in outs]).mean()
-            self.log(key + "/EpochMean", mean_value)
-
     def compute_negative_log_likelihood(self, dist, obs):
         nan_mask = obs.isnan()
         obs[nan_mask] = 0.0
@@ -53,6 +50,7 @@ class S2SLightningModule(pl.LightningModule):
 
         loss = t2m_loss + tp_loss
 
+        self.log("val_loss", loss)
         self.log("LL/All/Val", loss)
         self.log("LL/T2M/Val", t2m_loss)
         self.log("LL/TP/Val", tp_loss)
@@ -62,11 +60,6 @@ class S2SLightningModule(pl.LightningModule):
             "LL/T2M/Val": t2m_loss.detach(),
             "LL/TP/Val": tp_loss.detach(),
         }
-
-    def validation_epoch_end(self, outs):
-        for key in ["LL/All/Val", "LL/T2M/Val", "LL/TP/Val"]:
-            mean_value = np.array([float(x[key]) for x in outs]).mean()
-            self.log(key + "/EpochMean", mean_value)
 
     def configure_optimizers(self):
         return self.optimizer

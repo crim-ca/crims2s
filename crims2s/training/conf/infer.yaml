@@ -1,4 +1,6 @@
 defaults:
+  - model: emos
+  - optimizer: adam
   - transform: emos
 
 hydra:

@@ -3,9 +3,10 @@ import logging
 import numpy as np
 import os
 import torch
+import tqdm
 import xarray as xr
 
-from ..dataset import S2SDataset
+from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
 from .lightning import S2SLightningModule
 
@@ -40,7 +41,7 @@ def terciles_pytorch_to_xarray(
             "forecast_year": example_forecast.forecast_year.data,
             "forecast_monthday": example_forecast.forecast_monthday.data,
             "lead_time": example_forecast.lead_time.data,
-            "valid_time": example_forecast.valid_time,
+            "valid_time": example_forecast.valid_time.data,
             "forecast_time": example_forecast.forecast_time.data,
             "latitude": example_forecast.latitude.data,
             "longitude": example_forecast.longitude.data,
@@ -51,9 +52,49 @@ def terciles_pytorch_to_xarray(
     return dataset
 
 
+def concat_predictions(predictions):
+    yearly_predictions = {}
+    for p in predictions:
+        year = int(p.forecast_year.data)
+        yearly_list = yearly_predictions.get(year, [])
+        yearly_list.append(p)
+        yearly_predictions[year] = yearly_list
+
+    nested_datasets = [yearly_predictions[k] for k in sorted(yearly_predictions.keys())]
+
+    yearly_datasets = []
+    for l in nested_datasets:
+        l = sorted(l, key=lambda x: str(x.forecast_monthday[0]))
+        d = xr.concat(l, dim="forecast_monthday")
+        yearly_datasets.append(d)
+
+    return xr.concat(yearly_datasets, dim="forecast_year")
+
+
+def fix_dims_for_output(forecast_dataset):
+    """Manipulate the dimensions of the dataset of a single forecast so that we
+    can concatenate them easily."""
+
+    return (
+        forecast_dataset.stack(
+            {"forecast_label": ["forecast_year", "forecast_monthday"]}
+        )
+        .expand_dims("forecast_time")
+        .drop("forecast_label")
+        .squeeze("forecast_label")
+    )
+
+
 @hydra.main(config_path="conf", config_name="infer")
 def cli(cfg):
     transform = hydra.utils.instantiate(cfg.transform)
+
+    # The last transform is usually the one that turns everything into pytorch format.
+    # We remove it from the transform and perform it directly in the inference loop.
+    # This way, the inference loop has access to both the original xarray data (the
+    # labels are useful) and the pytorch data (to compute the inference).
+    last_transform = transform.transforms.pop(-1)
+
     years = list(range(cfg.begin, cfg.end))
 
     if cfg.index is not None:
@@ -65,32 +106,49 @@ def cli(cfg):
     else:
         name_filter = None
 
-    dataset = S2SDataset(
-        cfg.dataset_dir, years=years, name_filter=name_filter, include_features=False,
+    dataset = TransformedDataset(
+        S2SDataset(
+            cfg.dataset_dir,
+            years=years,
+            name_filter=name_filter,
+            include_features=False,
+        ),
+        transform,
     )
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=None,
         batch_sampler=None,
+        collate_fn=lambda x: x,
         num_workers=int(cfg.num_workers),
         shuffle=False,
     )
 
-    model = S2SLightningModule.load_from_checkpoint(cfg.checkpoint_dir).eval().freeze()
+    checkpoint_path = hydra.utils.to_absolute_path(cfg.checkpoint_dir)
+
+    model = hydra.utils.instantiate(cfg.model)
+    optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
+    lightning_module = S2SLightningModule.load_from_checkpoint(
+        checkpoint_path, model=model, optimizer=optimizer
+    )
+    lightning_module.eval()
+    lightning_module.freeze()
 
     datasets_of_examples = []
-    for example in dataloader:
-        transformed_example = transform(example)
-        t2m_dist, tp_dist = model(transformed_example)
+    for example in tqdm.tqdm(dataloader):
+        pytorch_example = last_transform(example)
+        t2m_dist, tp_dist = lightning_module(pytorch_example)
 
+        # We do not have edges for weeks 1-2. As a temporary replacement, make a
+        # placeholder week 1-2 filled with nans.
         t2m_edges = torch.cat(
-            [torch.full((2, 1, 121, 240), np.nan), transformed_example["edges_t2m"]], 1
+            [torch.full((2, 1, 121, 240), np.nan), pytorch_example["edges_t2m"]], 1
         )
         t2m_cdf = compute_edges_cdf_from_distribution(t2m_dist, t2m_edges)
 
         tp_edges = torch.cat(
-            [torch.full((2, 1, 121, 240), np.nan), transformed_example["edges_tp"]], 1
+            [torch.full((2, 1, 121, 240), np.nan), pytorch_example["edges_tp"]], 1
         )
         tp_cdf = compute_edges_cdf_from_distribution(tp_dist, tp_edges)
 
@@ -102,12 +160,16 @@ def cli(cfg):
         dataset = terciles_pytorch_to_xarray(
             t2m_terciles, tp_terciles, example_forecast
         )
-        datasets_of_examples.append(dataset)
+        datasets_of_examples.append(fix_dims_for_output(dataset))
 
-    ml_prediction = xr.combine_by_coords(datasets_of_examples)
+    sorted_datasets = sorted(
+        datasets_of_examples, key=lambda x: str(x.forecast_time.data[0])
+    )
 
-    _logger.info(f"Outputting forecasts to {os.cwd() + cfg.output_filename}.")
-    ml_prediction.to_netcdf(cfg.output_filename)
+    ml_prediction = xr.concat(sorted_datasets, dim="forecast_time")
+
+    _logger.info(f"Outputting forecasts to {os.getcwd() + '/' + cfg.output_file}.")
+    ml_prediction.to_netcdf(cfg.output_file)
 
 
 if __name__ == "__main__":
