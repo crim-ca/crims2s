@@ -1,0 +1,20 @@
+defaults:
+  - transform: emos
+
+hydra:
+  job:
+    name: S2S_EMOS
+user: ${oc.env:USER}
+dataset_dir: ***BASEDIR***/mlready/2021-08-21-test/
+num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
+begin: 2018
+end: 2021
+accelerator: auto
+devices:
+index:
+logging:
+  experiment_name: "S2S"
+  mlflow_uri: "${oc.env:MLFLOW_TRACKING_URI,http://10.1.48.27:5000}"
+  slurm_job_id: "${oc.env:SLURM_JOB_ID}"
+checkpoint_dir: ???
+output_file: ???

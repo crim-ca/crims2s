@@ -82,6 +82,7 @@ def cli(cfg):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=1,
         logger=[tensorboard, mlflow],
+        default_root_dir="./lightning/",
     )
 
     if cfg.lr_find:
