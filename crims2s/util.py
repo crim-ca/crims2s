@@ -60,7 +60,7 @@ ECMWF_FORECASTS = [
 ]
 
 # The last date at which we can use the obs for training.
-TEST_THRESHOLD = "2019-12-31"
+TEST_THRESHOLD = "2020-01-01"
 
 
 def fix_dataset_dims(d):
