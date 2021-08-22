@@ -12,7 +12,7 @@ num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 validate_from: 2018
 accelerator: auto
 devices:
-max_epochs: 10
+max_epochs: 15
 lr_find: False
 index:
 logging:

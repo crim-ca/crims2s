@@ -3,6 +3,7 @@ import logging
 import os
 import pytorch_lightning as pl
 import pytorch_lightning.callbacks as callbacks
+import pytorch_lightning.loggers as loggers
 import torch
 
 from ..dataset import S2SDataset, TransformedDataset
@@ -66,10 +67,9 @@ def cli(cfg):
 
     lightning_module = S2SLightningModule(model, optimizer)
 
-    tensorboard = pl.loggers.TensorBoardLogger("./tensorboard")
-    tensorboard.log_hyperparams(cfg)
+    tensorboard = loggers.TensorBoardLogger("./tensorboard", default_hp_metric=False)
 
-    mlflow = pl.loggers.MLFlowLogger(
+    mlflow = loggers.MLFlowLogger(
         cfg.logging.experiment_name,
         tracking_uri=cfg.logging.mlflow_uri,
         tags={"user": cfg.user},
@@ -102,6 +102,8 @@ def cli(cfg):
         _logger.info(f"Saved LR curve: {os.getcwd() + '/' + filename}.")
     else:
         trainer.fit(lightning_module, train_dataloader, val_dataloader)
+        best_score = float(checkpointer.best_model_score.cpu())
+        mlflow.log_metrics({"min_val_loss": best_score})
 
 
 if __name__ == "__main__":
