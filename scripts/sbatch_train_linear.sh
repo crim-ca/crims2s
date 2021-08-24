@@ -11,5 +11,5 @@
 source ***HOME***.bashrc
 conda activate s2s
 
-cd ***BASEDIR***/runs
-s2s_train model.biweekly=False
+cd ***BASEDIR***/runs/train
+s2s_train model.biweekly=False optimizer=adam devices=1

@@ -8,8 +8,9 @@ import pandas as pd
 import pathlib
 import xarray as xr
 
+from .distribution import fit_gamma_xarray, fit_normal_xarray
 from .transform import normalize_dataset
-from .util import fix_dataset_dims, ECMWF_FORECASTS, TEST_THRESHOLD
+from .util import add_biweekly_dim, fix_dataset_dims, ECMWF_FORECASTS, TEST_THRESHOLD
 
 _logger = logging.getLogger(__name__)
 
@@ -100,6 +101,31 @@ class EdgesExamplePartMaker(ExamplePartMaker):
         forecast_idx = ECMWF_FORECASTS.index((month, day))
 
         return self.edges.isel(weekofyear=forecast_idx)
+
+
+class ModelParametersExamplePartMaker(ExamplePartMaker):
+    def __init__(self):
+        pass
+
+    def __call__(self, year, example):
+        _logger.debug("Computing model distribution parameters...")
+
+        model = example["model"]
+        model_biweekly = add_biweekly_dim(model)
+
+        t2m_parameters = fit_normal_xarray(
+            model_biweekly.t2m, dim=["lead_time", "realization"]
+        )
+
+        tp_parameters = fit_gamma_xarray(
+            model_biweekly.tp.isel(lead_time=-1), dim="realization"
+        )
+
+        tp_parameters_normal = fit_normal_xarray(
+            model_biweekly.tp.isel(lead_time=-1), dim="realization"
+        )
+
+        return xr.merge([t2m_parameters, tp_parameters, tp_parameters_normal])
 
 
 def datestrings_from_input_dir(input_dir, center):
@@ -273,6 +299,7 @@ def cli(cfg):
             ("target", TargetExamplePartMaker(obs_terciled)),
             ("obs", ObsExamplePartMaker(raw_obs)),
             ("edges", EdgesExamplePartMaker(edges)),
+            ("model_parameters", ModelParametersExamplePartMaker()),
         ]
         examples = make_yearly_examples(years, part_makers)
 

@@ -146,11 +146,9 @@ def add_biweekly_dim(dataset):
             dim="biweekly_forecast",
         )
 
-        # with_weekly["tp"] = new_tp.clip(
-        ##    min=0.0
-        # )  # Clip is temporary until we figure out why tp isn't monotonous in ECMWF dataset.
-
-        with_weekly["tp"] = new_tp
+        with_weekly["tp"] = new_tp.clip(
+            min=0.0
+        )  # See recommendation https://renkulab.io/gitlab/aaron.spring/s2s-ai-challenge/-/issues/38.
 
     return with_weekly
 

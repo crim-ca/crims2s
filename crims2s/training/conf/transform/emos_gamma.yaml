@@ -1,0 +1,7 @@
+_target_: crims2s.transform.CompositeTransform
+transforms:
+- _target_: crims2s.transform.AddBiweeklyDimTransform
+- _target_: crims2s.transform.LinearModelAdapter
+  make_distributions: False
+- _target_: crims2s.transform.AddMetadata
+- _target_: crims2s.transform.ExampleToPytorch

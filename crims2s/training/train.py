@@ -72,7 +72,14 @@ def cli(cfg):
     mlflow = loggers.MLFlowLogger(
         cfg.logging.experiment_name,
         tracking_uri=cfg.logging.mlflow_uri,
-        tags={"user": cfg.user},
+        tags={
+            "user": cfg.user,
+            "slurm_job_id": os.environ.get("SLURM_JOB_ID", ""),
+            "slurm_array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID", ""),
+            "slurm_array_job_id": os.environ.get("SLURM_ARRAY_JOB_ID", ""),
+            "cwd": os.getcwd(),
+            "original_cwd": hydra.utils.get_original_cwd(),
+        },
     )
     mlflow.log_hyperparams(cfg)
 

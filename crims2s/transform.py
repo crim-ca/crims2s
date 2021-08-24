@@ -121,7 +121,14 @@ class ExampleToPytorch:
     def __call__(self, example):
         pytorch_example = {}
 
-        for dataset_name in ["obs", "model", "features", "target", "edges"]:
+        for dataset_name in [
+            "obs",
+            "model",
+            "features",
+            "target",
+            "edges",
+            "model_parameters",
+        ]:
             if dataset_name in example:
                 dataset = example[dataset_name]
                 for variable in dataset.data_vars:
@@ -147,27 +154,49 @@ class CompositeTransform:
         return transformed_example
 
 
-def model_to_distribution(model):
-    model_tp_mean = model.tp.isel(lead_time=-1).mean(dim="realization").rename("tp_mu")
-    model_tp_std = std_estimator(model.tp.isel(lead_time=-1), dim="realization").rename(
-        "tp_sigma"
-    )
-
+def t2m_to_normal(model):
     model_t2m_mean = model.t2m.mean(dim=["lead_time", "realization"]).rename("t2m_mu")
     model_t2m_std = std_estimator(model.t2m, dim=["lead_time", "realization"]).rename(
         "t2m_sigma"
     )
 
+    return xr.merge([model_t2m_mean, model_t2m_std]).rename(
+        biweekly_forecast="lead_time"
+    )
+
+
+def tp_to_normal(model):
+    model_tp_mean = model.tp.isel(lead_time=-1).mean(dim="realization").rename("tp_mu")
+    model_tp_std = std_estimator(model.tp.isel(lead_time=-1), dim="realization").rename(
+        "tp_sigma"
+    )
+
     return (
-        xr.merge([model_tp_mean, model_tp_std, model_t2m_mean, model_t2m_std])
+        xr.merge([model_tp_mean, model_tp_std])
         .drop("lead_time")
         .rename(biweekly_forecast="lead_time")
     )
 
 
+def tp_to_gamma(model):
+    pass
+
+
+def model_to_distribution(model):
+    model_t2m = t2m_to_normal(model)
+    model_tp = tp_to_normal(model)
+
+    return xr.merge([model_t2m, model_tp])
+
+
 class LinearModelAdapter:
+    def __init__(self, make_distributions=True):
+        self.make_distributions = make_distributions
+
     def __call__(self, example):
-        example["model"] = model_to_distribution(example["model"])
+        if self.make_distributions:
+            example["model"] = model_to_distribution(example["model"])
+
         example["obs"] = obs_to_biweekly(example["obs"])
 
         return example

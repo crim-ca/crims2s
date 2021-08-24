@@ -1,5 +1,5 @@
 defaults:
-  - model: emos
+  - model: emos_normalnormal
   - optimizer: adam
   - transform: emos
 
@@ -7,7 +7,7 @@ hydra:
   job:
     name: S2S_EMOS
 user: ${oc.env:USER}
-dataset_dir: ***BASEDIR***/mlready/2021-08-21-test/
+dataset_dir: ***BASEDIR***/mlready/2021-08-24-test/
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 validate_from: 2018
 accelerator: auto

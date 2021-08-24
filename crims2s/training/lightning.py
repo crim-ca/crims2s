@@ -19,7 +19,9 @@ class S2SLightningModule(pl.LightningModule):
         t2m_dist, tp_dist = self.forward(batch)
 
         t2m_loss = self.compute_negative_log_likelihood(t2m_dist, batch["obs_t2m"])
-        tp_loss = self.compute_negative_log_likelihood(tp_dist, batch["obs_tp"])
+        tp_loss = self.compute_negative_log_likelihood(
+            tp_dist, batch["obs_tp"], regularization=1e-9
+        )
 
         loss = t2m_loss + tp_loss
 
@@ -34,10 +36,11 @@ class S2SLightningModule(pl.LightningModule):
             "LL/TP/Train": tp_loss.detach(),
         }
 
-    def compute_negative_log_likelihood(self, dist, obs):
+    def compute_negative_log_likelihood(self, dist, obs, regularization=0.0):
         nan_mask = obs.isnan()
         obs[nan_mask] = 0.0
-        log_likelihood = dist.log_prob(obs)
+
+        log_likelihood = dist.log_prob(obs + regularization)
         log_likelihood[nan_mask] = 0.0
 
         return -log_likelihood.mean()
@@ -46,7 +49,9 @@ class S2SLightningModule(pl.LightningModule):
         t2m_dist, tp_dist = self.forward(batch)
 
         t2m_loss = self.compute_negative_log_likelihood(t2m_dist, batch["obs_t2m"])
-        tp_loss = self.compute_negative_log_likelihood(tp_dist, batch["obs_tp"])
+        tp_loss = self.compute_negative_log_likelihood(
+            tp_dist, batch["obs_tp"], regularization=1e-9
+        )
 
         loss = t2m_loss + tp_loss
 
