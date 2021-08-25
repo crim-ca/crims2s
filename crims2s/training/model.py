@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from ..distribution import Gamma
 from ..util import ECMWF_FORECASTS
 
 
@@ -97,7 +98,8 @@ class GammaEMOSModel(nn.Module):
         beta = self.beta_model(forecast_beta)
         beta = torch.clip(beta, min=self.regularization)
 
-        return torch.distributions.Gamma(alpha, beta)
+        # Here we use a home grown version of Gamma until they implement CDF in PyTorch.
+        return Gamma(alpha, beta)
 
 
 class TempPrecipEMOS(nn.Module):
@@ -187,11 +189,20 @@ class TempPrecipEMOSGamma(nn.Module):
 class MultiplexedEMOSModel(ModelMultiplexer):
     """A collection of EMOS models: one for each forecast that ECMWF does each year."""
 
-    def __init__(self, biweekly=True):
+    def __init__(self, forecast_model, biweekly=False):
         monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
         weekly_models = {
-            monthday: TempPrecipEMOS(biweekly=biweekly) for monthday in monthdays
+            monthday: forecast_model(biweekly=biweekly) for monthday in monthdays
         }
 
         super().__init__("monthday", weekly_models)
 
+
+class NormalGammaMultiplexedEMOS(MultiplexedEMOSModel):
+    def __init__(self, biweekly=False):
+        super().__init__(NormalGammaEMOS, biweekly=biweekly)
+
+
+class NormalNormalMultiplexedEMOS(MultiplexedEMOSModel):
+    def __init__(self, biweekly=False):
+        super().__init__(NormalNormalEMOS, biweekly=biweekly)

@@ -13,10 +13,10 @@ from .lightning import S2SLightningModule
 _logger = logging.getLogger(__name__)
 
 
-def compute_edges_cdf_from_distribution(distribution, edges):
+def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0):
     edges_nan_mask = edges.isnan()
     edges[edges_nan_mask] = 0.0
-    cdf = distribution.cdf(edges)
+    cdf = distribution.cdf(edges + regularization)
     edges[edges_nan_mask] = np.nan
     cdf[edges_nan_mask] = np.nan
 
@@ -150,12 +150,14 @@ def cli(cfg):
         tp_edges = torch.cat(
             [torch.full((2, 1, 121, 240), np.nan), pytorch_example["edges_tp"]], 1
         )
-        tp_cdf = compute_edges_cdf_from_distribution(tp_dist, tp_edges)
+        tp_cdf = compute_edges_cdf_from_distribution(
+            tp_dist, tp_edges, regularization=1e-9
+        )
 
         t2m_terciles = edges_cdf_to_terciles(t2m_cdf)
         tp_terciles = edges_cdf_to_terciles(tp_cdf)
 
-        example_forecast = example["model"]
+        example_forecast = example["obs"]
 
         dataset = terciles_pytorch_to_xarray(
             t2m_terciles, tp_terciles, example_forecast

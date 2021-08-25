@@ -13,6 +13,14 @@ from .lightning import S2SLightningModule
 _logger = logging.getLogger(__name__)
 
 
+class ModelCheckpoint(callbacks.ModelCheckpoint):
+    def on_save_checkpoint(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule, checkpoint
+    ):
+        pl_module.log(f"{self.monitor}_min", self.best_model_score)
+        return super().on_save_checkpoint(trainer, pl_module, checkpoint)
+
+
 @hydra.main(config_path="conf", config_name="config")
 def cli(cfg):
     transform = hydra.utils.instantiate(cfg.transform)
@@ -71,6 +79,7 @@ def cli(cfg):
 
     mlflow = loggers.MLFlowLogger(
         cfg.logging.experiment_name,
+        run_name=cfg.logging.run_name,
         tracking_uri=cfg.logging.mlflow_uri,
         tags={
             "user": cfg.user,
@@ -84,7 +93,7 @@ def cli(cfg):
     mlflow.log_hyperparams(cfg)
 
     early_stopping = callbacks.EarlyStopping(monitor="val_loss")
-    checkpointer = callbacks.ModelCheckpoint(monitor="val_loss")
+    checkpointer = ModelCheckpoint(monitor="val_loss")
 
     trainer = pl.Trainer(
         devices=cfg.devices,
@@ -110,7 +119,7 @@ def cli(cfg):
     else:
         trainer.fit(lightning_module, train_dataloader, val_dataloader)
         best_score = float(checkpointer.best_model_score.cpu())
-        mlflow.log_metrics({"min_val_loss": best_score})
+        mlflow.log_metrics({"val_loss_min": best_score})
 
 
 if __name__ == "__main__":

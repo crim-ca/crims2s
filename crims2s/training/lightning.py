@@ -25,16 +25,11 @@ class S2SLightningModule(pl.LightningModule):
 
         loss = t2m_loss + tp_loss
 
-        self.log("LL/All/Train", loss)
-        self.log("LL/T2M/Train", t2m_loss)
-        self.log("LL/TP/Train", tp_loss)
+        self.log("LL/All/Train", loss, on_epoch=True, on_step=True)
+        self.log("LL/T2M/Train", t2m_loss, on_epoch=True, on_step=True)
+        self.log("LL/TP/Train", tp_loss, on_epoch=True, on_step=True)
 
-        return {
-            "loss": loss,
-            "LL/All/Train": loss.detach(),
-            "LL/T2M/Train": t2m_loss.detach(),
-            "LL/TP/Train": tp_loss.detach(),
-        }
+        return loss
 
     def compute_negative_log_likelihood(self, dist, obs, regularization=0.0):
         nan_mask = obs.isnan()
@@ -55,16 +50,18 @@ class S2SLightningModule(pl.LightningModule):
 
         loss = t2m_loss + tp_loss
 
-        self.log("val_loss", loss)
-        self.log("LL/All/Val", loss)
-        self.log("LL/T2M/Val", t2m_loss)
-        self.log("LL/TP/Val", tp_loss)
+        self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
+        self.log("LL/All/Val", loss, on_epoch=True, on_step=True)
+        self.log("LL/T2M/Val", t2m_loss, on_epoch=True, on_step=True)
+        self.log("LL/TP/Val", tp_loss, on_epoch=True, on_step=True)
 
-        return {
-            "LL/All/Val": loss.detach(),
-            "LL/T2M/Val": t2m_loss.detach(),
-            "LL/TP/Val": tp_loss.detach(),
-        }
+        return {}
+
+        # return {
+        #     "LL/All/Val": loss.detach(),
+        #     "LL/T2M/Val": t2m_loss.detach(),
+        #     "LL/TP/Val": tp_loss.detach(),
+        # }
 
     def configure_optimizers(self):
         return self.optimizer

@@ -177,4 +177,11 @@ def obs_to_biweekly(obs):
     biweekly format."""
     aggregate_obs_tp = obs.pr.sum(dim="lead_time", min_count=2).rename("tp")
     aggregate_obs_t2m = obs.t2m.mean(dim="lead_time")
-    return xr.merge([aggregate_obs_tp, aggregate_obs_t2m])
+
+    aggregate = xr.merge([aggregate_obs_tp, aggregate_obs_t2m]).rename(
+        {"biweekly_forecast": "lead_time"}
+    )
+
+    return aggregate.assign_coords(
+        valid_time=aggregate.forecast_time + aggregate.lead_time
+    )

@@ -6,6 +6,18 @@ import xarray as xr
 from .util import std_estimator
 
 
+class Gamma(torch.distributions.Gamma):
+    """This is a placeholder gamma that has a CDF implemented. It was copy pasted from
+    a pull request that is in the works in Pytorch.
+    
+    See https://github.com/pytorch/pytorch/pull/54496."""
+
+    def cdf(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
+        return torch.igamma(self.concentration, self.rate * value)
+
+
 def fit_normal_xarray(array: xr.DataArray, dim=None) -> xr.Dataset:
     model_t2m_mean = array.mean(dim=dim).rename(f"{array.name}_mu")
     model_t2m_std = std_estimator(array, dim=dim).rename(f"{array.name}_sigma")
