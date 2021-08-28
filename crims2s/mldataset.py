@@ -174,6 +174,7 @@ def make_yearly_examples(years, makers):
     for year in years:
         example = {}
         for name, part_maker in makers:
+            print(part_maker)
             example[name] = part_maker(year, example)
 
         examples.append(example)
@@ -236,8 +237,8 @@ def cli(cfg):
         cfg_string = omegaconf.OmegaConf.to_yaml(cfg, resolve=True)
         f.write(cfg_string)
 
-    input_dir = hydra.utils.to_absolute_path(cfg.input_dir)
-    input_dir_plev = hydra.utils.to_absolute_path(cfg.input_dir_plev)
+    input_dir = hydra.utils.to_absolute_path(cfg.input.flat)
+    input_dir_plev = hydra.utils.to_absolute_path(cfg.input.plev)
 
     _logger.info(f"Will output in {output_path}")
 
@@ -248,8 +249,8 @@ def cli(cfg):
 
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
-    edges = xr.open_dataset(cfg.edges_file)
-    obs_terciled = xr.open_dataset(cfg.terciled_obs_file)
+    edges = xr.open_dataset(cfg.input.edges)
+    obs_terciled = xr.open_dataset(cfg.input.obs_terciled)
     raw_obs = read_raw_obs(cfg.observations.t2m_file, cfg.observations.pr_file)
 
     for datestring in datestrings:
@@ -257,7 +258,7 @@ def cli(cfg):
 
         _logger.info("Reading flat fields...")
         flat_dataset = read_flat_fields(
-            cfg.input_dir, cfg.center, cfg.fields.flat, datestring
+            input_dir, cfg.center, cfg.fields.flat, datestring
         )
 
         _logger.info("Reading fields with vertical levels...")

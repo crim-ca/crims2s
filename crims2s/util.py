@@ -115,9 +115,10 @@ def add_biweekly_dim(dataset):
         )
         weeklys.append(weekly_forecast)
 
-    with_weekly = xr.concat(weeklys, dim="biweekly_forecast").transpose(
-        "forecast_year", "forecast_monthday", "biweekly_forecast", ...
-    )
+    with_weekly = xr.concat(weeklys, dim="biweekly_forecast")
+    # with_weekly = with_weekly.transpose(
+    #    "forecast_year", "forecast_monthday", "biweekly_forecast", ...
+    # )
 
     # Fix the validity time for the first step (which we don't have any data for).
     with_weekly["valid_time"] = (
