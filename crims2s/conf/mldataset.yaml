@@ -1,7 +1,8 @@
 defaults:
-- observations: renku
+- raw-obs: renku
 - fields: small
 - input: train
+- aggregated-obs: renku
 
 hydra:
   job:

@@ -1,0 +1,3 @@
+deterministic: ***BASEDIR***2/from-template-lfs/hindcast-like_observations_2000-2019_biweekly_deterministic.nc
+terciled: ***BASEDIR***2/from-template-lfs/hindcast-like_observations_2000-2019_biweekly_terciled.nc
+edges: ***BASEDIR***2/from-template-lfs/hindcast-like-observations_2000-2019_biweekly_tercile-edges.nc
