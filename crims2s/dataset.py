@@ -54,14 +54,14 @@ class S2SDataset(torch.utils.data.Dataset):
 
         obs = xr.open_dataset(f, group="/obs")
         model = xr.open_dataset(f, group="/model")
-        target = xr.open_dataset(f, group="/target")
+        terciles = xr.open_dataset(f, group="/terciles")
         edges = xr.open_dataset(f, group="/edges")
         parameters = xr.open_dataset(f, group="/model_parameters")
 
         example = {
             "obs": obs,
             "model": model,
-            "target": target,
+            "terciles": terciles,
             "edges": edges,
             "model_parameters": parameters,
         }

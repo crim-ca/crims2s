@@ -1,7 +1,41 @@
+from crims2s.transform import t2m_to_normal
 import numpy as np
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
+
+
+def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0):
+    edges_nan_mask = edges.isnan()
+    edges[edges_nan_mask] = 0.0
+
+    cdf = distribution.cdf(edges + regularization)
+    edges[edges_nan_mask] = np.nan
+    cdf[edges_nan_mask] = np.nan
+
+    return cdf
+
+
+def edges_cdf_to_terciles(edges_cdf):
+    return torch.stack(
+        [edges_cdf[0], edges_cdf[1] - edges_cdf[0], 1.0 - edges_cdf[1],], dim=0
+    )
+
+
+def rps(pred, target, dim=0):
+    pred_nan_mask = pred.isnan()
+    target_nan_mask = target.isnan()
+
+    rps = torch.where(
+        pred_nan_mask | target_nan_mask,
+        torch.tensor(0.0),
+        torch.square(
+            torch.where(pred_nan_mask, torch.tensor(0.0), pred)
+            - torch.where(target_nan_mask, torch.tensor(0.0), target).sum(dim=dim)
+        ),
+    )
+
+    return rps
 
 
 class S2SLightningModule(pl.LightningModule):
@@ -18,16 +52,39 @@ class S2SLightningModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         t2m_dist, tp_dist = self.forward(batch)
 
-        t2m_loss = self.compute_negative_log_likelihood(t2m_dist, batch["obs_t2m"])
-        tp_loss = self.compute_negative_log_likelihood(
+        t2m_ll = self.compute_negative_log_likelihood(t2m_dist, batch["obs_t2m"])
+        tp_ll = self.compute_negative_log_likelihood(
             tp_dist, batch["obs_tp"], regularization=1e-9
         )
 
-        loss = t2m_loss + tp_loss
+        total_ll = t2m_ll + tp_ll
 
-        self.log("LL/All/Train", loss, on_epoch=True, on_step=True)
-        self.log("LL/T2M/Train", t2m_loss, on_epoch=True, on_step=True)
-        self.log("LL/TP/Train", tp_loss, on_epoch=True, on_step=True)
+        self.log("LL/All/Train", total_ll, on_epoch=True, on_step=True)
+        self.log("LL/T2M/Train", t2m_ll, on_epoch=True, on_step=True)
+        self.log("LL/TP/Train", tp_ll, on_epoch=True, on_step=True)
+
+        t2m_edges_cdf = compute_edges_cdf_from_distribution(
+            t2m_dist, batch["edges_t2m"]
+        )
+
+        tp_edges_cdf = compute_edges_cdf_from_distribution(
+            tp_dist, batch["edges_tp"], regularization=1e-9
+        )
+
+        t2m_terciles = edges_cdf_to_terciles(t2m_edges_cdf)
+        tp_terciles = edges_cdf_to_terciles(tp_edges_cdf)
+
+        t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
+        t2m_rps = t2m_rps.mean()
+
+        tp_rps = rps(tp_terciles, batch["terciles_tp"])
+        tp_rps = tp_rps.mean()
+
+        loss = t2m_rps + tp_rps
+
+        self.log("RPS/All/Train", loss, on_epoch=True, on_step=True)
+        self.log("RPS/T2M/Train", t2m_rps, on_epoch=True, on_step=True)
+        self.log("RPS/TP/Train", tp_rps, on_epoch=True, on_step=True)
 
         return loss
 

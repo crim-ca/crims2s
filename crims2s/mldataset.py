@@ -65,18 +65,15 @@ class ModelExamplePartMaker(ExamplePartMaker):
         )
 
 
-class TargetExamplePartMaker(ExamplePartMaker):
-    def __init__(self, target):
-        self.target = target
+class TercilesExamplePartMaker(ExamplePartMaker):
+    def __init__(self, terciles):
+        self.terciles = terciles
 
     def __call__(self, year, example):
         model = example["model"]
 
-        return (
-            self.target.sel(forecast_time=model.forecast_time)
-            .to_array()
-            .rename("target")
-            .transpose("latitude", "longitude", "variable", "lead_time", "category",)
+        return self.terciles.sel(forecast_time=model.forecast_time).transpose(
+            "category", "lead_time", "latitude", "longitude"
         )
 
 
@@ -100,18 +97,18 @@ class EdgesExamplePartMaker(ExamplePartMaker):
 
         forecast_idx = ECMWF_FORECASTS.index((month, day))
 
-        return self.edges.isel(weekofyear=forecast_idx)
+        return self.edges.isel(week=forecast_idx)
 
 
 class ModelParametersExamplePartMaker(ExamplePartMaker):
-    def __init__(self):
-        pass
+    def __init__(self, weeks_12):
+        self.weeks_12 = weeks_12
 
     def __call__(self, year, example):
         _logger.debug("Computing model distribution parameters...")
 
         model = example["model"]
-        model_biweekly = add_biweekly_dim(model)
+        model_biweekly = add_biweekly_dim(model, weeks_12=self.weeks_12)
 
         t2m_parameters = fit_normal_xarray(
             model_biweekly.t2m, dim=["lead_time", "realization"]
@@ -125,7 +122,9 @@ class ModelParametersExamplePartMaker(ExamplePartMaker):
             model_biweekly.tp.isel(lead_time=-1), dim="realization"
         )
 
-        return xr.merge([t2m_parameters, tp_parameters, tp_parameters_normal])
+        merged = xr.merge([t2m_parameters, tp_parameters, tp_parameters_normal])
+
+        return merged
 
 
 def datestrings_from_input_dir(input_dir, center):
@@ -174,7 +173,6 @@ def make_yearly_examples(years, makers):
     for year in years:
         example = {}
         for name, part_maker in makers:
-            print(part_maker)
             example[name] = part_maker(year, example)
 
         examples.append(example)
@@ -184,7 +182,7 @@ def make_yearly_examples(years, makers):
 
 def save_examples(examples, output_path):
     for e in examples:
-        _logger.info(f"Saving year: {int(e['target'].forecast_year)}")
+        _logger.info(f"Saving year: {int(e['terciles'].forecast_year)}")
         save_example(e, output_path)
 
 
@@ -192,7 +190,7 @@ def save_example(example, output_path: pathlib.Path):
     """Save an example to a single netcdf file. x is the input features. obs is the
     observations for every valid time in the forecast. y is the terciled target
     distribution (below, within, above normal)."""
-    forecast_time = example["target"].forecast_time
+    forecast_time = example["terciles"].forecast_time
     year = int(forecast_time.dt.year)
     month = int(forecast_time.dt.month)
     day = int(forecast_time.dt.day)
@@ -297,10 +295,13 @@ def cli(cfg):
         part_makers = [
             ("features", FeatureExamplePartMaker(features)),
             ("model", ModelExamplePartMaker(model)),
-            ("target", TargetExamplePartMaker(obs_terciled)),
+            ("terciles", TercilesExamplePartMaker(obs_terciled)),
             ("obs", ObsExamplePartMaker(raw_obs)),
             ("edges", EdgesExamplePartMaker(edges)),
-            ("model_parameters", ModelParametersExamplePartMaker()),
+            (
+                "model_parameters",
+                ModelParametersExamplePartMaker(weeks_12=cfg.weeks_12),
+            ),
         ]
         examples = make_yearly_examples(years, part_makers)
 

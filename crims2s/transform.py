@@ -91,14 +91,14 @@ def apply_to_all(transform, example):
 class AddBiweeklyDimTransform:
     """Transform that takes a training example and adds the biweekly dimension to it."""
 
-    def __init__(self):
-        pass
+    def __init__(self, weeks_12=False):
+        self.weeks_12 = weeks_12
 
     def __call__(self, example):
         new_example = {}
         for k in example:
             if k in ["model", "obs", "features"]:
-                new_example[k] = add_biweekly_dim(example[k])
+                new_example[k] = add_biweekly_dim(example[k], weeks_12=self.weeks_12)
             else:
                 new_example[k] = example[k]
 
@@ -125,7 +125,7 @@ class ExampleToPytorch:
             "obs",
             "model",
             "features",
-            "target",
+            "terciles",
             "edges",
             "model_parameters",
         ]:

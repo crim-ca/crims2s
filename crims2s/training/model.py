@@ -51,7 +51,7 @@ class NormalEMOSModel(nn.Module):
     def __init__(self, mu_key, sigma_key, biweekly=False):
         super().__init__()
 
-        shape = (3, 121, 240) if biweekly else (121, 240)
+        shape = (2, 121, 240) if biweekly else (121, 240)
 
         self.mu_model = LinearModel(*shape)
         self.sigma_model = LinearModel(*shape, fill_intercept=1.0)
@@ -60,14 +60,31 @@ class NormalEMOSModel(nn.Module):
         self.sigma_key = sigma_key
 
     def forward(self, example):
+        print(example.keys())
+
         forecast_mu, forecast_sigma = (
             example[self.mu_key],
             example[self.sigma_key],
         )
 
+        print("before linear", forecast_mu.isnan().float().mean())
+
         mu = self.mu_model(forecast_mu)
+
+        print("after linear", mu.isnan().float().mean())
+
         sigma = self.sigma_model(forecast_sigma)
         sigma = torch.clip(sigma, min=1e-6)
+
+        print("forecast_mu", forecast_mu.shape)
+        print("forecast_sigma", forecast_sigma.shape)
+
+        import matplotlib.pyplot as plt
+
+        plt.imshow(mu[0].isnan().float().detach().numpy())
+        plt.savefig("toto.png")
+
+        print(mu[0])
 
         return torch.distributions.Normal(loc=mu, scale=sigma)
 
@@ -76,7 +93,7 @@ class GammaEMOSModel(nn.Module):
     def __init__(self, alpha_key, beta_key, biweekly=False, regularization=1e-9):
         super().__init__()
 
-        shape = (3, 121, 240) if biweekly else (121, 240)
+        shape = (2, 121, 240) if biweekly else (121, 240)
 
         self.regularization = regularization
 
@@ -124,9 +141,11 @@ class TempPrecipEMOS(nn.Module):
 class NormalNormalEMOS(TempPrecipEMOS):
     def __init__(self, biweekly=False):
         t2m_model = NormalEMOSModel(
-            "model_t2m_mu", "model_t2m_sigma", biweekly=biweekly
+            "model_parameters_t2m_mu", "model_parameters_t2m_sigma", biweekly=biweekly
         )
-        tp_model = NormalEMOSModel("model_tp_mu", "model_tp_sigma", biweekly=biweekly)
+        tp_model = NormalEMOSModel(
+            "model_parameters_tp_mu", "model_parameters_tp_sigma", biweekly=biweekly
+        )
 
         super().__init__(t2m_model, tp_model)
 
@@ -140,50 +159,6 @@ class NormalGammaEMOS(TempPrecipEMOS):
             "model_parameters_tp_alpha", "model_parameters_tp_beta", biweekly=biweekly
         )
         super().__init__(t2m_model, tp_model)
-
-
-class TempPrecipEMOSGamma(nn.Module):
-    """EMOS model for temperature and precipitation. Swap out the placeholder normal
-    distribution that we used for the precipitation. Use a Gamma instead.
-
-    Args:
-        biweekly: If True, train a separate model for every 2 weeks period."""
-
-    def __init__(self, biweekly=False):
-        super().__init__()
-
-        shape = (3, 121, 240) if biweekly else (121, 240)
-
-        self.tp_alpha_model = LinearModel(*shape)
-        self.tp_beta_model = LinearModel(*shape, fill_intercept=1.0)
-
-        self.t2m_mu_model = LinearModel(*shape)
-        self.t2m_sigma_model = LinearModel(*shape, fill_intercept=1.0)
-
-    def forward(self, example):
-        forecast_tp_alpha, forecast_tp_beta = (
-            example["model_tp_alpha"],
-            example["model_tp_beta"],
-        )
-        forecast_t2m_mu, forecast_t2m_sigma = (
-            example["model_t2m_mu"],
-            example["model_t2m_sigma"],
-        )
-
-        tp_alpha = self.tp_mu_model(forecast_tp_alpha)
-        tp_alpha = torch.clip(tp_alpha, min=1e-6)
-
-        tp_beta = self.tp_sigma_model(forecast_tp_beta)
-        tp_beta = torch.clip(tp_beta, min=1e-6)
-
-        t2m_mu = self.t2m_mu_model(forecast_t2m_mu)
-        t2m_sigma = self.t2m_sigma_model(forecast_t2m_sigma)
-        t2m_sigma = torch.clip(t2m_sigma, min=1e-6)
-
-        tp_dist = torch.distributions.Gamma(tp_alpha, tp_beta)
-        t2m_dist = torch.distributions.Normal(loc=t2m_mu, scale=t2m_sigma)
-
-        return t2m_dist, tp_dist
 
 
 class MultiplexedEMOSModel(ModelMultiplexer):
