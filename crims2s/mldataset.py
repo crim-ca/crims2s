@@ -249,9 +249,9 @@ def cli(cfg):
 
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
-    edges = xr.open_dataset(cfg.input.edges)
-    obs_terciled = xr.open_dataset(cfg.input.obs_terciled)
-    raw_obs = read_raw_obs(cfg.observations.t2m_file, cfg.observations.pr_file)
+    edges = xr.open_dataset(cfg.aggregated_obs.edges)
+    obs_terciled = xr.open_dataset(cfg.aggregated_obs.terciled)
+    raw_obs = read_raw_obs(cfg.raw_obs.t2m_file, cfg.raw_obs.pr_file)
 
     for datestring in datestrings:
         _logger.info(f"Processing datestring {datestring}...")
