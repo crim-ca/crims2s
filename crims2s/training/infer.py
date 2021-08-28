@@ -8,25 +8,14 @@ import xarray as xr
 
 from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
-from .lightning import S2SLightningModule
+from .lightning import (
+    S2SLightningModule,
+    compute_edges_cdf_from_distribution,
+    edges_cdf_to_terciles,
+    rps,
+)
 
 _logger = logging.getLogger(__name__)
-
-
-def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0):
-    edges_nan_mask = edges.isnan()
-    edges[edges_nan_mask] = 0.0
-    cdf = distribution.cdf(edges + regularization)
-    edges[edges_nan_mask] = np.nan
-    cdf[edges_nan_mask] = np.nan
-
-    return cdf
-
-
-def edges_cdf_to_terciles(edges_cdf):
-    return torch.stack(
-        [edges_cdf[0], edges_cdf[1] - edges_cdf[0], 1.0 - edges_cdf[1],], dim=0
-    )
 
 
 def terciles_pytorch_to_xarray(
@@ -142,14 +131,10 @@ def cli(cfg):
 
         # We do not have edges for weeks 1-2. As a temporary replacement, make a
         # placeholder week 1-2 filled with nans.
-        t2m_edges = torch.cat(
-            [torch.full((2, 1, 121, 240), np.nan), pytorch_example["edges_t2m"]], 1
-        )
+        t2m_edges = pytorch_example["edges_t2m"]
         t2m_cdf = compute_edges_cdf_from_distribution(t2m_dist, t2m_edges)
 
-        tp_edges = torch.cat(
-            [torch.full((2, 1, 121, 240), np.nan), pytorch_example["edges_tp"]], 1
-        )
+        tp_edges = pytorch_example["edges_tp"]
         tp_cdf = compute_edges_cdf_from_distribution(
             tp_dist, tp_edges, regularization=1e-9
         )

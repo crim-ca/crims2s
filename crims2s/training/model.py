@@ -60,31 +60,15 @@ class NormalEMOSModel(nn.Module):
         self.sigma_key = sigma_key
 
     def forward(self, example):
-        print(example.keys())
-
         forecast_mu, forecast_sigma = (
             example[self.mu_key],
             example[self.sigma_key],
         )
 
-        print("before linear", forecast_mu.isnan().float().mean())
-
         mu = self.mu_model(forecast_mu)
-
-        print("after linear", mu.isnan().float().mean())
 
         sigma = self.sigma_model(forecast_sigma)
         sigma = torch.clip(sigma, min=1e-6)
-
-        print("forecast_mu", forecast_mu.shape)
-        print("forecast_sigma", forecast_sigma.shape)
-
-        import matplotlib.pyplot as plt
-
-        plt.imshow(mu[0].isnan().float().detach().numpy())
-        plt.savefig("toto.png")
-
-        print(mu[0])
 
         return torch.distributions.Normal(loc=mu, scale=sigma)
 
