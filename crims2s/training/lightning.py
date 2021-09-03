@@ -28,10 +28,12 @@ def rps(pred, target, dim=0):
 
     rps = torch.where(
         pred_nan_mask | target_nan_mask,
-        torch.tensor(0.0),
+        torch.zeros_like(pred),
         torch.square(
-            torch.where(pred_nan_mask, torch.tensor(0.0), pred)
-            - torch.where(target_nan_mask, torch.tensor(0.0), target).sum(dim=dim)
+            torch.where(pred_nan_mask, torch.zeros_like(pred), pred)
+            - torch.where(target_nan_mask, torch.zeros_like(target), target).sum(
+                dim=dim
+            )
         ),
     )
 
@@ -100,17 +102,40 @@ class S2SLightningModule(pl.LightningModule):
     def validation_step(self, batch, batch_id):
         t2m_dist, tp_dist = self.forward(batch)
 
-        t2m_loss = self.compute_negative_log_likelihood(t2m_dist, batch["obs_t2m"])
-        tp_loss = self.compute_negative_log_likelihood(
+        t2m_ll = self.compute_negative_log_likelihood(t2m_dist, batch["obs_t2m"])
+        tp_ll = self.compute_negative_log_likelihood(
             tp_dist, batch["obs_tp"], regularization=1e-9
         )
 
-        loss = t2m_loss + tp_loss
+        ll_all = t2m_ll + tp_ll
+
+        self.log("LL/All/Val", ll_all, on_epoch=True, on_step=True)
+        self.log("LL/T2M/Val", t2m_ll, on_epoch=True, on_step=True)
+        self.log("LL/TP/Val", tp_ll, on_epoch=True, on_step=True)
+
+        t2m_edges_cdf = compute_edges_cdf_from_distribution(
+            t2m_dist, batch["edges_t2m"]
+        )
+
+        tp_edges_cdf = compute_edges_cdf_from_distribution(
+            tp_dist, batch["edges_tp"], regularization=1e-9
+        )
+
+        t2m_terciles = edges_cdf_to_terciles(t2m_edges_cdf)
+        tp_terciles = edges_cdf_to_terciles(tp_edges_cdf)
+
+        t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
+        t2m_rps = t2m_rps.mean()
+
+        tp_rps = rps(tp_terciles, batch["terciles_tp"])
+        tp_rps = tp_rps.mean()
+
+        loss = t2m_rps + tp_rps
 
         self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
-        self.log("LL/All/Val", loss, on_epoch=True, on_step=True)
-        self.log("LL/T2M/Val", t2m_loss, on_epoch=True, on_step=True)
-        self.log("LL/TP/Val", tp_loss, on_epoch=True, on_step=True)
+        self.log("RPS/All/Val", loss, on_epoch=True, on_step=True)
+        self.log("RPS/T2M/Val", t2m_rps, on_epoch=True, on_step=True)
+        self.log("RPS/TP/Val", tp_rps, on_epoch=True, on_step=True)
 
         return {}
 

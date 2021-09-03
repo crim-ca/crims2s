@@ -168,9 +168,16 @@ class NormalNormalMultiplexedEMOS(MultiplexedEMOSModel):
 
 
 class NormalGammaMonthlyEMOS(ModelMultiplexer):
+    MODEL = NormalGammaEMOS
+
     def __init__(self, biweekly=False):
         monthly_models = {
-            f"{month:02}": NormalGammaEMOS(biweekly=biweekly) for month in range(1, 13)
+            f"{month:02}": self.MODEL(biweekly=biweekly) for month in range(1, 13)
         }
 
         super().__init__(lambda x: x["monthday"][:2], monthly_models)
+
+
+class NormalNormalMonthlyEMOS(NormalGammaMonthlyEMOS):
+    MODEL = NormalNormalEMOS
+

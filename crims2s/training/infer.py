@@ -127,10 +127,9 @@ def cli(cfg):
     datasets_of_examples = []
     for example in tqdm.tqdm(dataloader):
         pytorch_example = last_transform(example)
+
         t2m_dist, tp_dist = lightning_module(pytorch_example)
 
-        # We do not have edges for weeks 1-2. As a temporary replacement, make a
-        # placeholder week 1-2 filled with nans.
         t2m_edges = pytorch_example["edges_t2m"]
         t2m_cdf = compute_edges_cdf_from_distribution(t2m_dist, t2m_edges)
 

@@ -14,9 +14,12 @@ s2s_train hydra/launcher=submitit_slurm optimizer=adam,sgd model.biweekly=True,F
 ```
 s2s_train model=emos_normalgamma transform=emos_gamma model.biweekly=false,true  \
     devices=1 optimizer.lr=1e-3,5e-4,5e-3 hydra/launcher=submitit_slurm  \
-    +hydra.launcher.additional_parameters.gres="gpu:1" hydra.launcher.cpus_per_task=6 
+    +hydra.launcher.additional_parameters.gres="gpu:1" hydra.launcher.cpus_per_task=6 -m
 ```
 
 
+
+
 ## Inference
+
 
