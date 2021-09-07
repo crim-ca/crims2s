@@ -38,3 +38,9 @@ s2s_mldataset hydra/launcher=submitit_slurm output_dir=<output_directory> index=
 ```
 See `crims2s/conf/mldataset.yaml` for parameters of the generation.
 See `crims2s/conf/hydra/launcher/submitit_slurm.yaml` to configure the Slurm jobs.
+
+#### Test set
+
+```
+s2s_mldataset hydra/launcher=submitit_slurm set=test index="range(0,53)" output_dir=<output> -m
+```

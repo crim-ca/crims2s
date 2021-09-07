@@ -15,14 +15,14 @@ from .util import add_biweekly_dim, fix_dataset_dims, ECMWF_FORECASTS, TEST_THRE
 _logger = logging.getLogger(__name__)
 
 
-def obs_of_forecast(forecast, raw_obs):
-    # 2019-11-20 is the last forecast for which we have full observations.
-    # We could transfer the latter dates to our test set.
-    limit = pd.to_datetime(TEST_THRESHOLD)
+def obs_of_forecast(forecast, raw_obs, threshold=TEST_THRESHOLD):
     valid_time = forecast.valid_time.compute()
-    valid_time = forecast.valid_time.where(
-        forecast.valid_time < limit, drop=True
-    ).compute()
+
+    if threshold:
+        threshold_pd = pd.to_datetime(threshold)
+        valid_time = forecast.valid_time.where(
+            forecast.valid_time < threshold_pd, drop=True
+        ).compute()
 
     obs = raw_obs.sel(time=valid_time)
 
@@ -78,12 +78,13 @@ class TercilesExamplePartMaker(ExamplePartMaker):
 
 
 class ObsExamplePartMaker(ExamplePartMaker):
-    def __init__(self, obs):
+    def __init__(self, obs, threshold=None):
         self.obs = obs
+        self.threshold = threshold
 
     def __call__(self, year, example):
         model = example["model"]
-        return obs_of_forecast(model, self.obs)
+        return obs_of_forecast(model, self.obs, self.threshold)
 
 
 class EdgesExamplePartMaker(ExamplePartMaker):
@@ -145,8 +146,10 @@ def preprocess_single_level_file(d):
     return d.rename(new_names).isel(plev=0).drop("plev")
 
 
-def read_flat_fields(input_dir, center, fields, datestring):
-    filenames = [f"{input_dir}/{center}-hindcast-{f}-{datestring}.nc" for f in fields]
+def read_flat_fields(input_dir, center, fields, datestring, file_label="hindcast"):
+    filenames = [
+        f"{input_dir}/{center}-{file_label}-{f}-{datestring}.nc" for f in fields
+    ]
     flat_dataset = xr.open_mfdataset(filenames, preprocess=fix_dataset_dims)
 
     for dim in ["depth_below_and_layer", "meanSea"]:
@@ -157,12 +160,12 @@ def read_flat_fields(input_dir, center, fields, datestring):
     return flat_dataset
 
 
-def read_plev_fields(input_dir, center, fields, datestring):
+def read_plev_fields(input_dir, center, fields, datestring, file_label="hindcast"):
     plev_files = []
     for field, levels in fields.items():
         for level in levels:
             plev_files.append(
-                f"{input_dir}/{center}-hindcast-{field}{level}-{datestring}.nc"
+                f"{input_dir}/{center}-{file_label}-{field}{level}-{datestring}.nc"
             )
 
     return xr.open_mfdataset(plev_files, preprocess=preprocess_single_level_file)
@@ -235,8 +238,8 @@ def cli(cfg):
         cfg_string = omegaconf.OmegaConf.to_yaml(cfg, resolve=True)
         f.write(cfg_string)
 
-    input_dir = hydra.utils.to_absolute_path(cfg.input.flat)
-    input_dir_plev = hydra.utils.to_absolute_path(cfg.input.plev)
+    input_dir = hydra.utils.to_absolute_path(cfg.set.input.flat)
+    input_dir_plev = hydra.utils.to_absolute_path(cfg.set.input.plev)
 
     _logger.info(f"Will output in {output_path}")
 
@@ -247,8 +250,8 @@ def cli(cfg):
 
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
-    edges = xr.open_dataset(cfg.aggregated_obs.edges)
-    obs_terciled = xr.open_dataset(cfg.aggregated_obs.terciled)
+    edges = xr.open_dataset(cfg.set.aggregated_obs.edges)
+    obs_terciled = xr.open_dataset(cfg.set.aggregated_obs.terciled)
     raw_obs = read_raw_obs(cfg.raw_obs.t2m_file, cfg.raw_obs.pr_file)
 
     for datestring in datestrings:
@@ -256,7 +259,11 @@ def cli(cfg):
 
         _logger.info("Reading flat fields...")
         flat_dataset = read_flat_fields(
-            input_dir, cfg.center, cfg.fields.flat, datestring
+            input_dir,
+            cfg.center,
+            cfg.fields.flat,
+            datestring,
+            file_label=cfg.set.file_label,
         )
 
         _logger.info("Reading fields with vertical levels...")
@@ -264,7 +271,11 @@ def cli(cfg):
         datasets = [flat_dataset]
         if plev_fields:
             plev_dataset = read_plev_fields(
-                input_dir_plev, cfg.center, plev_fields, datestring
+                input_dir_plev,
+                cfg.center,
+                plev_fields,
+                datestring,
+                file_label=cfg.set.file_label,
             )
             datasets.append(plev_dataset)
 
@@ -286,9 +297,15 @@ def cli(cfg):
         _logger.info("Persisting merged dataset...")
         features = features.persist()
 
-        years = model.forecast_year[model.forecast_time < pd.to_datetime("2019-11-20")]
-        if cfg.year is not None:
-            years = years.where(years == cfg.year, drop=True)
+        years = model.forecast_year
+
+        if cfg.set.last_forecast:
+            years = model.forecast_year[
+                model.forecast_time < pd.to_datetime(cfg.set.last_forecast)
+            ]
+
+        if cfg.set.year:
+            years = years.where(years == cfg.set.year, drop=True)
 
         _logger.info(f"Will make examples for years: {years.data}")
 
@@ -296,7 +313,7 @@ def cli(cfg):
             ("features", FeatureExamplePartMaker(features)),
             ("model", ModelExamplePartMaker(model)),
             ("terciles", TercilesExamplePartMaker(obs_terciled)),
-            ("obs", ObsExamplePartMaker(raw_obs)),
+            ("obs", ObsExamplePartMaker(raw_obs, cfg.set.valid_threshold)),
             ("edges", EdgesExamplePartMaker(edges)),
             (
                 "model_parameters",

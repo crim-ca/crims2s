@@ -1,8 +1,7 @@
 defaults:
 - raw_obs: renku
-- fields: small
-- input: train
-- aggregated_obs: renku
+- fields: mini
+- set: train
 
 hydra:
   job:
@@ -14,4 +13,3 @@ weeks_12: False  # Whether to add weeks 12 to the examples or only make examples
 
 # Switches to generate a specific file. Useful for debugging or parallel execution on Slurm.
 index:
-year:

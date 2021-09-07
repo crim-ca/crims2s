@@ -152,7 +152,7 @@ def cli(cfg):
         datasets_of_examples, key=lambda x: str(x.forecast_time.data[0])
     )
 
-    ml_prediction = xr.concat(sorted_datasets, dim="forecast_time")
+    ml_prediction = xr.concat(sorted_datasets, dim="forecast_time").drop("valid_time")
 
     _logger.info(f"Outputting forecasts to {os.getcwd() + '/' + cfg.output_file}.")
     ml_prediction.to_netcdf(cfg.output_file)
