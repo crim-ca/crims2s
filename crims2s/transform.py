@@ -178,10 +178,6 @@ def tp_to_normal(model):
     )
 
 
-def tp_to_gamma(model):
-    pass
-
-
 def model_to_distribution(model):
     model_t2m = t2m_to_normal(model)
     model_tp = tp_to_normal(model)
@@ -201,3 +197,15 @@ class LinearModelAdapter:
 
         return example
 
+
+class CubeRootTP:
+    """Apply a cubic root on precipitation data."""
+
+    def __init__(self):
+        pass
+
+    def __call__(self, example):
+        for k in ["obs_tp", "edges_tp"]:
+            example[k] = example[k] ** (1.0 / 3.0)
+
+        return example

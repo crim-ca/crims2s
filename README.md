@@ -29,7 +29,7 @@ and validate that the path to pip leads to your conda environment.
 The `mldataset` module is used to generate ml-ready datasets from the challenge data.
 It also registers a console script through setuptools.
 To generate examples from a single week in the year, use
-```
+``` 
 s2s_mldataset output_dir=<output_directory> index=3
 ```
 To generate a whole dataset using the default configuration, use

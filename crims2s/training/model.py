@@ -134,6 +134,20 @@ class NormalNormalEMOS(TempPrecipEMOS):
         super().__init__(t2m_model, tp_model)
 
 
+class NormalCubeNormalEMOS(TempPrecipEMOS):
+    def __init__(self, biweekly=False):
+        t2m_model = NormalEMOSModel(
+            "model_parameters_t2m_mu", "model_parameters_t2m_sigma", biweekly=biweekly
+        )
+        tp_model = NormalEMOSModel(
+            "model_parameters_tp_cube_root_mu",
+            "model_parameters_tp_cube_root_sigma",
+            biweekly=biweekly,
+        )
+
+        super().__init__(t2m_model, tp_model)
+
+
 class NormalGammaEMOS(TempPrecipEMOS):
     def __init__(self, biweekly=False):
         t2m_model = NormalEMOSModel(
@@ -167,6 +181,11 @@ class NormalNormalMultiplexedEMOS(MultiplexedEMOSModel):
         super().__init__(NormalNormalEMOS, biweekly=biweekly)
 
 
+class NormalCubeNormalMultiplexedEMOS(MultiplexedEMOSModel):
+    def __init__(self, biweekly=False):
+        super().__init__(NormalCubeNormalEMOS, biweekly=biweekly)
+
+
 class NormalGammaMonthlyEMOS(ModelMultiplexer):
     MODEL = NormalGammaEMOS
 
@@ -181,3 +200,6 @@ class NormalGammaMonthlyEMOS(ModelMultiplexer):
 class NormalNormalMonthlyEMOS(NormalGammaMonthlyEMOS):
     MODEL = NormalNormalEMOS
 
+
+class NormalCubeNormalMonthlyEMOS(NormalGammaMonthlyEMOS):
+    MODEL = NormalCubeNormalEMOS

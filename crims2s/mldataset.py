@@ -123,7 +123,19 @@ class ModelParametersExamplePartMaker(ExamplePartMaker):
             model_biweekly.tp.isel(lead_time=-1), dim="realization"
         )
 
-        merged = xr.merge([t2m_parameters, tp_parameters, tp_parameters_normal])
+        tp_cube_root = (model_biweekly.tp.isel(lead_time=-1) ** (1.0 / 3.0)).rename(
+            "tp_cube_root"
+        )
+        tp_parameters_cube_root = fit_normal_xarray(tp_cube_root, dim="realization")
+
+        merged = xr.merge(
+            [
+                t2m_parameters,
+                tp_parameters,
+                tp_parameters_normal,
+                tp_parameters_cube_root,
+            ]
+        )
 
         return merged
 
