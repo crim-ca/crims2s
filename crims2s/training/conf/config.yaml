@@ -14,6 +14,8 @@ accelerator: auto
 devices:
 max_epochs: 100
 lr_find: False
+early_stopping:
+  patience: 5
 index:
 logging:
   experiment_name: "S2S_RenkuGrid"

@@ -155,7 +155,7 @@ def preprocess_single_level_file(d):
     level = int(d.plev[0])
     new_names = {k: f"{k}{level}" for k in d.data_vars}
 
-    return d.rename(new_names).isel(plev=0).drop("plev")
+    return fix_dataset_dims(d.rename(new_names).isel(plev=0).drop("plev"))
 
 
 def read_flat_fields(input_dir, center, fields, datestring, file_label="hindcast"):
@@ -295,7 +295,8 @@ def cli(cfg):
         features = normalize_dataset(features)
         features = remove_nans(features)
 
-        model = flat_dataset[["t2m", "tp"]]
+        model = flat_dataset[["t2m", "tp", "forecast_time"]]
+
         # Super evil temporary hack: the ECMWF data is sprinkled with nans, but it looks
         # like what are nans should be zeros. So we replace them arbitratily with zeros.
         model["tp"] = model["tp"].fillna(0.0)

@@ -96,7 +96,9 @@ def cli(cfg):
     )
     mlflow.log_hyperparams(cfg)
 
-    early_stopping = callbacks.EarlyStopping(monitor="val_loss")
+    early_stopping = callbacks.EarlyStopping(
+        monitor="val_loss", patience=cfg.early_stopping.patience
+    )
     checkpointer = ModelCheckpoint(monitor="val_loss")
     lr_monitor = callbacks.LearningRateMonitor()
 
