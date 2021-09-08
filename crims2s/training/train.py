@@ -73,8 +73,12 @@ def cli(cfg):
     model = hydra.utils.instantiate(cfg.model)
     optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
 
-    lightning_module = S2SLightningModule(model, optimizer)
+    if "scheduler" in cfg:
+        scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer)
+    else:
+        scheduler = None
 
+    lightning_module = S2SLightningModule(model, optimizer, scheduler)
     tensorboard = loggers.TensorBoardLogger("./tensorboard", default_hp_metric=False)
 
     mlflow = loggers.MLFlowLogger(
@@ -94,6 +98,7 @@ def cli(cfg):
 
     early_stopping = callbacks.EarlyStopping(monitor="val_loss")
     checkpointer = ModelCheckpoint(monitor="val_loss")
+    lr_monitor = callbacks.LearningRateMonitor()
 
     trainer = pl.Trainer(
         devices=cfg.devices,
@@ -101,7 +106,7 @@ def cli(cfg):
         max_epochs=cfg.max_epochs,
         log_every_n_steps=1,
         logger=[tensorboard, mlflow],
-        callbacks=[early_stopping, checkpointer],
+        callbacks=[early_stopping, checkpointer, lr_monitor],
         default_root_dir="./lightning/",
     )
 

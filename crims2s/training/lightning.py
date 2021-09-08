@@ -43,10 +43,11 @@ def rps(pred, target, dim=0):
 class S2SLightningModule(pl.LightningModule):
     # We specify default values for model and optimizer even though it doesn't make sense.
     # We do this so that the module can be brought back to life with load_from_checkpoint.
-    def __init__(self, model=None, optimizer=None):
+    def __init__(self, model=None, optimizer=None, scheduler=None):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
+        self.scheduler = scheduler
 
     def forward(self, x):
         return self.model(x)
@@ -146,4 +147,14 @@ class S2SLightningModule(pl.LightningModule):
         # }
 
     def configure_optimizers(self):
-        return self.optimizer
+        return_dict = {
+            "optimizer": self.optimizer,
+        }
+
+        if self.scheduler is not None:
+            return_dict["lr_scheduler"] = {
+                "scheduler": self.scheduler,
+                "monitor": "val_loss",
+            }
+
+        return return_dict
