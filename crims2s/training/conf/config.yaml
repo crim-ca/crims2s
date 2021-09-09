@@ -2,6 +2,7 @@ defaults:
   - model: emos_normalgamma
   - optimizer: adam
   - transform: emos_gamma
+  - scheduler: reduce_lr_on_plateau
 
 hydra:
   job:

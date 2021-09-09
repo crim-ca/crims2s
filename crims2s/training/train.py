@@ -8,7 +8,7 @@ import torch
 
 from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
-from .lightning import S2SLightningModule
+from .lightning import S2STercilesModule
 
 _logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def cli(cfg):
     else:
         scheduler = None
 
-    lightning_module = S2SLightningModule(model, optimizer, scheduler)
+    lightning_module = S2STercilesModule(model, optimizer, scheduler)
     tensorboard = loggers.TensorBoardLogger("./tensorboard", default_hp_metric=False)
 
     mlflow = loggers.MLFlowLogger(

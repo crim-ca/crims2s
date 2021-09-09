@@ -4,22 +4,7 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
-
-def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0):
-    edges_nan_mask = edges.isnan()
-    edges[edges_nan_mask] = 0.0
-
-    cdf = distribution.cdf(edges + regularization)
-    edges[edges_nan_mask] = np.nan
-    cdf[edges_nan_mask] = np.nan
-
-    return cdf
-
-
-def edges_cdf_to_terciles(edges_cdf):
-    return torch.stack(
-        [edges_cdf[0], edges_cdf[1] - edges_cdf[0], 1.0 - edges_cdf[1],], dim=0
-    )
+from .model.util import DistributionToTerciles
 
 
 def rps(pred, target, dim=0):
@@ -40,7 +25,7 @@ def rps(pred, target, dim=0):
     return rps
 
 
-class S2SLightningModule(pl.LightningModule):
+class S2SDistributionModule(pl.LightningModule):
     # We specify default values for model and optimizer even though it doesn't make sense.
     # We do this so that the module can be brought back to life with load_from_checkpoint.
     def __init__(self, model=None, optimizer=None, scheduler=None):
@@ -48,6 +33,8 @@ class S2SLightningModule(pl.LightningModule):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.t2m_to_terciles = DistributionToTerciles()
+        self.tp_to_terciles = DistributionToTerciles()
 
     def forward(self, x):
         return self.model(x)
@@ -66,16 +53,8 @@ class S2SLightningModule(pl.LightningModule):
         self.log("LL/T2M/Train", t2m_ll, on_epoch=True, on_step=True)
         self.log("LL/TP/Train", tp_ll, on_epoch=True, on_step=True)
 
-        t2m_edges_cdf = compute_edges_cdf_from_distribution(
-            t2m_dist, batch["edges_t2m"]
-        )
-
-        tp_edges_cdf = compute_edges_cdf_from_distribution(
-            tp_dist, batch["edges_tp"], regularization=1e-9
-        )
-
-        t2m_terciles = edges_cdf_to_terciles(t2m_edges_cdf)
-        tp_terciles = edges_cdf_to_terciles(tp_edges_cdf)
+        t2m_terciles = self.t2m_to_terciles(t2m_dist, batch["edges_t2m"])
+        tp_terciles = self.tp_to_terciles(tp_dist, batch["edges_tp"])
 
         t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
         t2m_rps = t2m_rps.mean()
@@ -114,16 +93,8 @@ class S2SLightningModule(pl.LightningModule):
         self.log("LL/T2M/Val", t2m_ll, on_epoch=True, on_step=True)
         self.log("LL/TP/Val", tp_ll, on_epoch=True, on_step=True)
 
-        t2m_edges_cdf = compute_edges_cdf_from_distribution(
-            t2m_dist, batch["edges_t2m"]
-        )
-
-        tp_edges_cdf = compute_edges_cdf_from_distribution(
-            tp_dist, batch["edges_tp"], regularization=1e-9
-        )
-
-        t2m_terciles = edges_cdf_to_terciles(t2m_edges_cdf)
-        tp_terciles = edges_cdf_to_terciles(tp_edges_cdf)
+        t2m_terciles = self.t2m_to_terciles(t2m_dist, batch["edges_t2m"])
+        tp_terciles = self.tp_to_terciles(tp_dist, batch["edges_tp"])
 
         t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
         t2m_rps = t2m_rps.mean()
@@ -140,11 +111,69 @@ class S2SLightningModule(pl.LightningModule):
 
         return {}
 
-        # return {
-        #     "LL/All/Val": loss.detach(),
-        #     "LL/T2M/Val": t2m_loss.detach(),
-        #     "LL/TP/Val": tp_loss.detach(),
-        # }
+    def configure_optimizers(self):
+        return_dict = {
+            "optimizer": self.optimizer,
+        }
+
+        if self.scheduler is not None:
+            return_dict["lr_scheduler"] = {
+                "scheduler": self.scheduler,
+                "monitor": "val_loss",
+            }
+
+        return return_dict
+
+
+class S2STercilesModule(pl.LightningModule):
+    """Lightning module for models that output terciles directly, instead of modules
+    that output distributions."""
+
+    # We specify default values for model and optimizer even though it doesn't make sense.
+    # We do this so that the module can be brought back to life with load_from_checkpoint.
+    def __init__(self, model=None, optimizer=None, scheduler=None):
+        super().__init__()
+        self.model = model
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+
+    def forward(self, x):
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        t2m_terciles, tp_terciles = self.forward(batch)
+
+        t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
+        t2m_rps = t2m_rps.mean()
+
+        tp_rps = rps(tp_terciles, batch["terciles_tp"])
+        tp_rps = tp_rps.mean()
+
+        loss = t2m_rps + tp_rps
+
+        self.log("RPS/All/Train", loss, on_epoch=True, on_step=True)
+        self.log("RPS/T2M/Train", t2m_rps, on_epoch=True, on_step=True)
+        self.log("RPS/TP/Train", tp_rps, on_epoch=True, on_step=True)
+
+        return loss
+
+    def validation_step(self, batch, batch_id):
+        t2m_terciles, tp_terciles = self.forward(batch)
+
+        t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
+        t2m_rps = t2m_rps.mean()
+
+        tp_rps = rps(tp_terciles, batch["terciles_tp"])
+        tp_rps = tp_rps.mean()
+
+        loss = t2m_rps + tp_rps
+
+        self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
+        self.log("RPS/All/Val", loss, on_epoch=True, on_step=True)
+        self.log("RPS/T2M/Val", t2m_rps, on_epoch=True, on_step=True)
+        self.log("RPS/TP/Val", tp_rps, on_epoch=True, on_step=True)
+
+        return {}
 
     def configure_optimizers(self):
         return_dict = {
