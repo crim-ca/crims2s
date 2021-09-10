@@ -7,12 +7,10 @@ hydra:
   job:
     name: S2S_EMOS
 user: ${oc.env:USER}
-dataset_dir: ***BASEDIR***/mlready/2021-08-28-test/
+dataset_dir: /***HOME***fast_scratch/s2s/mlready/2021-09-08-w-features-test
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 begin: 2018
 end: 2021
-accelerator: auto
-devices:
 index:
 logging:
   experiment_name: "S2S"

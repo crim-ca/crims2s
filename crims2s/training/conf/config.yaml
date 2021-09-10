@@ -6,20 +6,21 @@ defaults:
 
 hydra:
   job:
-    name: S2S_EMOS
+    name: S2S_BAYES
 user: ${oc.env:USER}
-dataset_dir: ***BASEDIR***/mlready/2021-09-07-cube-train
+dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-08-w-features
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 validate_from: 2018
 accelerator: auto
-devices:
+devices: 1
 max_epochs: 100
 lr_find: False
+include_features: True
 early_stopping:
   patience: 5
 index:
 logging:
-  experiment_name: "S2S_RenkuGrid"
+  experiment_name: "S2S_Bayes"
   run_name:
   mlflow_uri: "${oc.env:MLFLOW_TRACKING_URI,http://10.1.48.27:5000}"
   slurm_job_id: "${oc.env:SLURM_JOB_ID}"

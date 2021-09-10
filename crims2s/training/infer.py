@@ -8,12 +8,7 @@ import xarray as xr
 
 from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
-from .lightning import (
-    S2SLightningModule,
-    compute_edges_cdf_from_distribution,
-    edges_cdf_to_terciles,
-    rps,
-)
+from .lightning import S2STercilesModule
 
 _logger = logging.getLogger(__name__)
 
@@ -100,7 +95,7 @@ def cli(cfg):
             cfg.dataset_dir,
             years=years,
             name_filter=name_filter,
-            include_features=False,
+            include_features=True,
         ),
         transform,
     )
@@ -118,28 +113,20 @@ def cli(cfg):
 
     model = hydra.utils.instantiate(cfg.model)
     optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
-    lightning_module = S2SLightningModule.load_from_checkpoint(
+    lightning_module = S2STercilesModule.load_from_checkpoint(
         checkpoint_path, model=model, optimizer=optimizer
     )
     lightning_module.eval()
     lightning_module.freeze()
 
+    lightning_module.cuda()
+
     datasets_of_examples = []
     for example in tqdm.tqdm(dataloader):
         pytorch_example = last_transform(example)
+        pytorch_example = pytorch_example.cuda()
 
-        t2m_dist, tp_dist = lightning_module(pytorch_example)
-
-        t2m_edges = pytorch_example["edges_t2m"]
-        t2m_cdf = compute_edges_cdf_from_distribution(t2m_dist, t2m_edges)
-
-        tp_edges = pytorch_example["edges_tp"]
-        tp_cdf = compute_edges_cdf_from_distribution(
-            tp_dist, tp_edges, regularization=1e-9
-        )
-
-        t2m_terciles = edges_cdf_to_terciles(t2m_cdf)
-        tp_terciles = edges_cdf_to_terciles(tp_cdf)
+        t2m_terciles, tp_terciles = lightning_module(pytorch_example)
 
         example_forecast = example["obs"]
 

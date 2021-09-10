@@ -42,7 +42,7 @@ def cli(cfg):
             cfg.dataset_dir,
             years=train_years,
             name_filter=name_filter,
-            include_features=False,
+            include_features=cfg.include_features,
         ),
         transform,
     )
@@ -51,7 +51,7 @@ def cli(cfg):
             cfg.dataset_dir,
             years=val_years,
             name_filter=name_filter,
-            include_features=False,
+            include_features=cfg.include_features,
         ),
         transform,
     )
@@ -71,7 +71,15 @@ def cli(cfg):
     )
 
     model = hydra.utils.instantiate(cfg.model)
-    optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
+    # optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
+
+    optimizer = torch.optim.Adam(
+        [
+            {"params": model.forecast_model.parameters(), "lr": 5e-3},
+            {"params": model.weight_model.parameters(), "lr": 5e-3},
+        ],
+        lr=1e-3,
+    )
 
     if "scheduler" in cfg:
         scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer)
