@@ -35,11 +35,11 @@ class DistributionToTerciles(nn.Module):
 class DistributionModelAdapter(nn.Module):
     """Convert a model that outputs distributions into a model that outputs terciles."""
 
-    def __init__(self, model):
+    def __init__(self, model, tp_regularization=0.0):
         super().__init__()
         self.model = model
         self.t2m_to_terciles = DistributionToTerciles()
-        self.tp_to_terciles = DistributionToTerciles()
+        self.tp_to_terciles = DistributionToTerciles(regularization=tp_regularization)
 
     def forward(self, example):
         t2m_dist, tp_dist = self.model(example)

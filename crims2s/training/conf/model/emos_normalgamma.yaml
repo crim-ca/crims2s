@@ -1,4 +1,5 @@
 _target_: crims2s.training.model.util.DistributionModelAdapter
+tp_regularization: 1e-9
 model:
   _target_: crims2s.training.model.NormalGammaEMOS
   biweekly: False

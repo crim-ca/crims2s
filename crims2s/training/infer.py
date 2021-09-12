@@ -1,3 +1,4 @@
+from crims2s.transform import CompositeTransform
 import hydra
 import logging
 import numpy as np
@@ -69,6 +70,18 @@ def fix_dims_for_output(forecast_dataset):
     )
 
 
+def example_to_cuda(example):
+    new_example = {}
+
+    for k in example:
+        if k != "monthday":
+            new_example[k] = example[k].cuda()
+        else:
+            new_example[k] = example[k]
+
+    return new_example
+
+
 @hydra.main(config_path="conf", config_name="infer")
 def cli(cfg):
     transform = hydra.utils.instantiate(cfg.transform)
@@ -77,7 +90,12 @@ def cli(cfg):
     # We remove it from the transform and perform it directly in the inference loop.
     # This way, the inference loop has access to both the original xarray data (the
     # labels are useful) and the pytorch data (to compute the inference).
-    last_transform = transform.transforms.pop(-1)
+    # last_transform = transform.transforms.pop(-1)
+
+    last_transform = CompositeTransform(transform.transforms[-2:])
+
+    transform.transforms.pop(-1)
+    transform.transforms.pop(-1)
 
     years = list(range(cfg.begin, cfg.end))
 
@@ -123,15 +141,15 @@ def cli(cfg):
 
     datasets_of_examples = []
     for example in tqdm.tqdm(dataloader):
-        pytorch_example = last_transform(example)
-        pytorch_example = pytorch_example.cuda()
-
-        t2m_terciles, tp_terciles = lightning_module(pytorch_example)
-
         example_forecast = example["obs"]
 
+        pytorch_example = last_transform(example)
+        pytorch_example = example_to_cuda(pytorch_example)
+
+        t2m_terciles, tp_terciles, _ = lightning_module(pytorch_example)
+
         dataset = terciles_pytorch_to_xarray(
-            t2m_terciles, tp_terciles, example_forecast
+            t2m_terciles.cpu(), tp_terciles.cpu(), example_forecast
         )
         datasets_of_examples.append(fix_dims_for_output(dataset))
 

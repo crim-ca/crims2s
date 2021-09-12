@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
+from .model.bayes import BayesianUpdateModel
 from .model.util import DistributionToTerciles
 
 
@@ -49,9 +50,14 @@ class S2SDistributionModule(pl.LightningModule):
 
         total_ll = t2m_ll + tp_ll
 
-        self.log("LL/All/Train", total_ll, on_epoch=True, on_step=True)
-        self.log("LL/T2M/Train", t2m_ll, on_epoch=True, on_step=True)
-        self.log("LL/TP/Train", tp_ll, on_epoch=True, on_step=True)
+        self.log("LL_Epoch/All/Train", total_ll, on_epoch=True, on_step=False)
+        self.log("LL_Step/All/Train", total_ll, on_epoch=False, on_step=True)
+
+        self.log("LL_Epoch/T2M/Train", t2m_ll, on_epoch=True, on_step=False)
+        self.log("LL_Step/T2M/Train", t2m_ll, on_epoch=False, on_step=True)
+
+        self.log("LL_Epoch/TP/Train", tp_ll, on_epoch=True, on_step=False)
+        self.log("LL_Step/TP/Train", t2m_ll, on_epoch=False, on_step=True)
 
         t2m_terciles = self.t2m_to_terciles(t2m_dist, batch["edges_t2m"])
         tp_terciles = self.tp_to_terciles(tp_dist, batch["edges_tp"])
@@ -64,9 +70,21 @@ class S2SDistributionModule(pl.LightningModule):
 
         loss = t2m_rps + tp_rps
 
-        self.log("RPS/All/Train", loss, on_epoch=True, on_step=True)
-        self.log("RPS/T2M/Train", t2m_rps, on_epoch=True, on_step=True)
-        self.log("RPS/TP/Train", tp_rps, on_epoch=True, on_step=True)
+        self.log(
+            "Loss_Epoch/All/Train", loss, logger=False, on_epoch=True, on_step=False
+        )
+        self.log(
+            "Loss_Step/All/Train", loss, logger=False, on_epoch=False, on_step=True
+        )
+
+        self.log("RPS_Epoch/All/Train", loss, on_epoch=True, on_step=False)
+        self.log("RPS_Step/All/Train", loss, on_epoch=False, on_step=True)
+
+        self.log("RPS_Epoch/T2M/Train", t2m_rps, on_epoch=True, on_step=False)
+        self.log("RPS_Step/T2M/Train", t2m_rps, on_epoch=False, on_step=True)
+
+        self.log("RPS_Epoch/TP/Train", tp_rps, on_epoch=True, on_step=False)
+        self.log("RPS_Step/TP/Train", tp_rps, on_epoch=False, on_step=True)
 
         return loss
 
@@ -87,11 +105,16 @@ class S2SDistributionModule(pl.LightningModule):
             tp_dist, batch["obs_tp"], regularization=1e-9
         )
 
-        ll_all = t2m_ll + tp_ll
+        total_ll = t2m_ll + tp_ll
 
-        self.log("LL/All/Val", ll_all, on_epoch=True, on_step=True)
-        self.log("LL/T2M/Val", t2m_ll, on_epoch=True, on_step=True)
-        self.log("LL/TP/Val", tp_ll, on_epoch=True, on_step=True)
+        self.log("LL_Epoch/All/Val", total_ll, on_epoch=True, on_step=False)
+        self.log("LL_Step/All/Val", total_ll, on_epoch=False, on_step=True)
+
+        self.log("LL_Epoch/T2M/Val", t2m_ll, on_epoch=True, on_step=False)
+        self.log("LL_Step/T2M/Val", t2m_ll, on_epoch=False, on_step=True)
+
+        self.log("LL_Epoch/TP/Val", tp_ll, on_epoch=True, on_step=False)
+        self.log("LL_Step/TP/Val", t2m_ll, on_epoch=False, on_step=True)
 
         t2m_terciles = self.t2m_to_terciles(t2m_dist, batch["edges_t2m"])
         tp_terciles = self.tp_to_terciles(tp_dist, batch["edges_tp"])
@@ -105,9 +128,11 @@ class S2SDistributionModule(pl.LightningModule):
         loss = t2m_rps + tp_rps
 
         self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
-        self.log("RPS/All/Val", loss, on_epoch=True, on_step=True)
-        self.log("RPS/T2M/Val", t2m_rps, on_epoch=True, on_step=True)
-        self.log("RPS/TP/Val", tp_rps, on_epoch=True, on_step=True)
+
+        self.log("Loss_Epoch/Val", loss, on_epoch=True, on_step=False)
+        self.log("RPS_Epoch/AllVal", loss, on_epoch=True, on_step=False)
+        self.log("RPS_Epoch/T2M/Val", t2m_rps, on_epoch=True, on_step=False)
+        self.log("RPS_Epoch/TP/Val", tp_rps, on_epoch=True, on_step=False)
 
         return {}
 
@@ -143,23 +168,25 @@ class S2STercilesModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         t2m_terciles, tp_terciles = self.forward(batch)
 
-        t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
-        t2m_rps = t2m_rps.mean()
-
-        tp_rps = rps(tp_terciles, batch["terciles_tp"])
-        tp_rps = tp_rps.mean()
-
-        loss = t2m_rps + tp_rps
-
-        self.log("RPS/All/Train", loss, on_epoch=True, on_step=True)
-        self.log("RPS/T2M/Train", t2m_rps, on_epoch=True, on_step=True)
-        self.log("RPS/TP/Train", tp_rps, on_epoch=True, on_step=True)
+        loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
+        self.log("Loss_Step/Train", loss, on_epoch=False, on_step=True)
+        self.log("Loss_Epoch/Train", loss, on_epoch=True, on_step=False)
 
         return loss
 
     def validation_step(self, batch, batch_id):
         t2m_terciles, tp_terciles = self.forward(batch)
 
+        fields_loss = self.compute_fields_loss(
+            batch, t2m_terciles, tp_terciles, label="Val"
+        )
+
+        self.log("val_loss", fields_loss, logger=False, on_step=False, on_epoch=True)
+        self.log("Loss_Epoch/Val", fields_loss, on_epoch=True, on_step=False)
+
+        return {}
+
+    def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
         t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
         t2m_rps = t2m_rps.mean()
 
@@ -168,12 +195,11 @@ class S2STercilesModule(pl.LightningModule):
 
         loss = t2m_rps + tp_rps
 
-        self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
-        self.log("RPS/All/Val", loss, on_epoch=True, on_step=True)
-        self.log("RPS/T2M/Val", t2m_rps, on_epoch=True, on_step=True)
-        self.log("RPS/TP/Val", tp_rps, on_epoch=True, on_step=True)
+        self.log(f"RPS_Epoch/All/{label}", loss, on_epoch=True, on_step=False)
+        self.log(f"RPS_Epoch/T2M/{label}", t2m_rps, on_epoch=True, on_step=False)
+        self.log(f"RPS_Epoch/TP/{label}", tp_rps, on_epoch=True, on_step=False)
 
-        return {}
+        return loss
 
     def configure_optimizers(self):
         return_dict = {
@@ -187,3 +213,118 @@ class S2STercilesModule(pl.LightningModule):
             }
 
         return return_dict
+
+
+class S2SBayesModelModule(S2STercilesModule):
+    def __init__(
+        self,
+        model: BayesianUpdateModel,
+        optimizer,
+        scheduler,
+        regularization: float,
+        model_only_epochs=0,
+    ):
+        super().__init__(model, optimizer, scheduler)
+        self.regularization = regularization
+        self.model_only_epochs = model_only_epochs
+
+    def on_epoch_start(self) -> None:
+        if self.current_epoch < self.model_only_epochs:
+            for p in self.model.t2m_weight_model.parameters():
+                p.requires_grad = False
+
+            for p in self.model.tp_weight_model.parameters():
+                p.requires_grad = False
+
+        else:
+            for p in self.model.t2m_weight_model.parameters():
+                p.requires_grad = True
+
+            for p in self.model.tp_weight_model.parameters():
+                p.requires_grad = True
+
+    def training_step(self, batch, batch_idx):
+        t2m_terciles, tp_terciles, t2m_prior_weights, tp_prior_weights = self.forward(
+            batch
+        )
+        fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
+
+        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
+        reg_loss = self.regularization * torch.square(prior_weights).mean()
+        loss = fields_loss + reg_loss
+
+        self.log("Loss_Epoch/All/Train", loss, on_epoch=True, on_step=False)
+        self.log("Loss_Step/All/Train", loss, on_epoch=False, on_step=True)
+
+        self.log(
+            "Loss_Epoch/PriorWeights/Train", reg_loss, on_epoch=True, on_step=False
+        )
+        self.log("Loss_Step/PriorWeights/Train", reg_loss, on_epoch=False, on_step=True)
+
+        self.log(
+            "PriorWeights_Epoch/T2M/Train",
+            t2m_prior_weights.detach().mean(),
+            on_epoch=True,
+            on_step=False,
+        )
+        self.log(
+            "PriorWeights_Epoch/TP/Train",
+            tp_prior_weights.detach().mean(),
+            on_epoch=True,
+            on_step=False,
+        )
+
+        prior_weights_mean = prior_weights.detach().mean()
+        self.log(
+            "PriorWeights_Epoch/All/Train",
+            prior_weights_mean,
+            on_epoch=True,
+            on_step=False,
+        )
+        self.log(
+            "PriorWeights_Step/All/Train",
+            prior_weights_mean,
+            on_epoch=False,
+            on_step=True,
+        )
+
+        return loss
+
+    def validation_step(self, batch, batch_id):
+        t2m_terciles, tp_terciles, t2m_prior_weights, tp_prior_weights = self.forward(
+            batch
+        )
+
+        fields_loss = self.compute_fields_loss(
+            batch, t2m_terciles, tp_terciles, label="Val"
+        )
+
+        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
+        reg_loss = self.regularization * torch.square(prior_weights).mean()
+        loss = fields_loss + reg_loss
+
+        self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
+
+        self.log("Loss_Epoch/All/Val", loss, on_epoch=True, on_step=False)
+
+        self.log("Loss_Epoch/PriorWeights/Val", reg_loss, on_epoch=True, on_step=False)
+        self.log(
+            "PriorWeights_Epoch/T2M/Val",
+            t2m_prior_weights.detach().mean(),
+            on_epoch=True,
+            on_step=False,
+        )
+        self.log(
+            "PriorWeights_Epoch/TP/Val",
+            tp_prior_weights.detach().mean(),
+            on_epoch=True,
+            on_step=False,
+        )
+        self.log(
+            "PriorWeights_Epoch/All/Val",
+            prior_weights.detach().mean(),
+            on_epoch=True,
+            on_step=False,
+        )
+
+        return {}

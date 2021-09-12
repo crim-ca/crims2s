@@ -240,8 +240,6 @@ def read_raw_obs(t2m_file, pr_file, preprocess=lambda x: x):
 
 @hydra.main(config_path="conf", config_name="mldataset")
 def cli(cfg):
-    print(cfg)
-
     output_dir = hydra.utils.to_absolute_path(cfg.output_dir)
     output_path = pathlib.Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)

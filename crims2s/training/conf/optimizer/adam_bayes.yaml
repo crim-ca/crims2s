@@ -1,0 +1,9 @@
+forecast_model:
+  _target_: torch.optim.Adam
+  lr: 1e-3
+t2m_weight_model:
+  _target_: torch.optim.Adam
+  lr: 1e-6
+tp_weight_model:
+  _target_: torch.optim.Adam
+  lr: 1e-6

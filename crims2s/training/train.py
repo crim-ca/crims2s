@@ -1,3 +1,5 @@
+from itertools import accumulate
+import collections.abc
 import hydra
 import logging
 import os
@@ -17,8 +19,24 @@ class ModelCheckpoint(callbacks.ModelCheckpoint):
     def on_save_checkpoint(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, checkpoint
     ):
-        pl_module.log(f"{self.monitor}_min", self.best_model_score)
+        if self.best_model_score is not None:
+            pl_module.log(f"{self.monitor}_min", self.best_model_score)
         return super().on_save_checkpoint(trainer, pl_module, checkpoint)
+
+
+def make_optimizer(cfg, model):
+    if "_target_" in cfg:
+        return hydra.utils.instantiate(cfg, model.parameters())
+    elif isinstance(cfg, collections.abc.Mapping):
+        optimizers = []
+        for k, v in cfg.items():
+            parameters = getattr(model, k).parameters()
+            optimizer = hydra.utils.instantiate(v, parameters)
+            optimizers.append(optimizer)
+
+        return optimizers
+    else:
+        raise RuntimeError("Coud not interpret optimizer configuration.")
 
 
 @hydra.main(config_path="conf", config_name="config")
@@ -71,22 +89,14 @@ def cli(cfg):
     )
 
     model = hydra.utils.instantiate(cfg.model)
-    # optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
-
-    optimizer = torch.optim.Adam(
-        [
-            {"params": model.forecast_model.parameters(), "lr": 5e-3},
-            {"params": model.weight_model.parameters(), "lr": 5e-3},
-        ],
-        lr=1e-3,
-    )
+    optimizer = make_optimizer(cfg.optimizer, model)
 
     if "scheduler" in cfg:
         scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer)
     else:
         scheduler = None
 
-    lightning_module = S2STercilesModule(model, optimizer, scheduler)
+    lightning_module = hydra.utils.instantiate(cfg.module, model, optimizer, scheduler)
     tensorboard = loggers.TensorBoardLogger("./tensorboard", default_hp_metric=False)
 
     mlflow = loggers.MLFlowLogger(
@@ -111,13 +121,15 @@ def cli(cfg):
     lr_monitor = callbacks.LearningRateMonitor()
 
     trainer = pl.Trainer(
-        devices=cfg.devices,
-        accelerator=cfg.accelerator,
-        max_epochs=cfg.max_epochs,
         log_every_n_steps=1,
         logger=[tensorboard, mlflow],
         callbacks=[early_stopping, checkpointer, lr_monitor],
         default_root_dir="./lightning/",
+        **cfg.trainer
+        # devices=cfg.devices,
+        # accelerator=cfg.accelerator,
+        # max_epochs=cfg.max_epochs,
+        # accumulate_grad_batches=cfg.accumulate_grad_batches,
     )
 
     if cfg.lr_find:

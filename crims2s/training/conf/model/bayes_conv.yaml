@@ -3,8 +3,8 @@ forecast_model:
   _target_: crims2s.training.model.NormalCubeNormalMultiplexedEMOS
   biweekly: True
 t2m_weight_model:
-  _target_: crims2s.training.model.bayes.LinearWeightModel
+  _target_: crims2s.training.model.bayes.ConvolutionalWeightModel
   in_features: 14
 tp_weight_model:
-  _target_: crims2s.training.model.bayes.LinearWeightModel
+  _target_: crims2s.training.model.bayes.ConvolutionalWeightModel
   in_features: 14
