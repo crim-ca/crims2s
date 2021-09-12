@@ -155,7 +155,11 @@ class BayesianUpdateModel(nn.Module):
         t2m[:, t2m_nan_mask] = np.nan
         tp[:, tp_nan_mask] = np.nan
 
-        t2m_prior_weights = t2m_weights[0][~t2m_nan_mask]
-        tp_prior_weights = tp_weights[0][~tp_nan_mask]
+        t2m_prior_weights = torch.where(
+            ~t2m_nan_mask, t2m_weights[0], torch.zeros_like(t2m_weights[0])
+        )
+        tp_prior_weights = torch.where(
+            ~tp_nan_mask, tp_weights[0], torch.zeros_like(tp_weights[0])
+        )
 
         return t2m, tp, t2m_prior_weights, tp_prior_weights

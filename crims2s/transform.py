@@ -114,6 +114,8 @@ class AddMetadata:
         day = int(model.forecast_time.dt.day)
         example["monthday"] = f"{month:02}{day:02}"
 
+        example["latitude"] = model.latitude
+
         return example
 
 
@@ -139,6 +141,8 @@ class ExampleToPytorch:
         for k in ["monthday"]:
             pytorch_example[k] = example[k]
 
+        pytorch_example["latitude"] = torch.from_numpy(example["latitude"].data)
+
         return pytorch_example
 
 
@@ -152,6 +156,11 @@ class CompositeTransform:
             transformed_example = t(transformed_example)
 
         return transformed_example
+
+    def __repr__(self):
+        inner_str = ", ".join([repr(t) for t in self.transforms])
+
+        return f"CompositeTransform([{inner_str}])"
 
 
 def t2m_to_normal(model):

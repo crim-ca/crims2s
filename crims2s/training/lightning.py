@@ -156,11 +156,14 @@ class S2STercilesModule(pl.LightningModule):
 
     # We specify default values for model and optimizer even though it doesn't make sense.
     # We do this so that the module can be brought back to life with load_from_checkpoint.
-    def __init__(self, model=None, optimizer=None, scheduler=None):
+    def __init__(
+        self, model=None, optimizer=None, scheduler=None, reweight_by_area=True
+    ):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.reweight_by_area = reweight_by_area
 
     def forward(self, x):
         return self.model(x)
@@ -186,11 +189,28 @@ class S2STercilesModule(pl.LightningModule):
 
         return {}
 
+    def score_weights(self, batch):
+        latitude = batch["latitude"]
+
+        weights = torch.where(
+            latitude > -60.0, torch.cos(torch.deg2rad(torch.abs(latitude))), 0.0
+        )
+
+        # We unsqueeze the result so that is can broadcast on anything that has (lat, lon)
+        # as its last dimensions.
+        return weights.unsqueeze(-1)
+
     def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
+        score_weights = self.score_weights(batch)
+
         t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
+        if self.reweight_by_area:
+            t2m_rps *= score_weights
         t2m_rps = t2m_rps.mean()
 
         tp_rps = rps(tp_terciles, batch["terciles_tp"])
+        if self.reweight_by_area:
+            tp_rps *= score_weights
         tp_rps = tp_rps.mean()
 
         loss = t2m_rps + tp_rps
@@ -223,8 +243,9 @@ class S2SBayesModelModule(S2STercilesModule):
         scheduler,
         regularization: float,
         model_only_epochs=0,
+        reweight_by_area=True,
     ):
-        super().__init__(model, optimizer, scheduler)
+        super().__init__(model, optimizer, scheduler, reweight_by_area)
         self.regularization = regularization
         self.model_only_epochs = model_only_epochs
 
@@ -249,8 +270,14 @@ class S2SBayesModelModule(S2STercilesModule):
         )
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
 
-        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
-        reg_loss = self.regularization * torch.square(prior_weights).mean()
+        prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
+
+        reg_loss = torch.square(prior_weights)
+        if self.reweight_by_area:
+            score_mask = self.score_weights(batch)
+            reg_loss *= score_mask
+        reg_loss = self.regularization * reg_loss.mean()
+
         loss = fields_loss + reg_loss
 
         self.log("Loss_Epoch/All/Train", loss, on_epoch=True, on_step=False)
