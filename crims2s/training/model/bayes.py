@@ -112,7 +112,7 @@ class BayesianUpdateModel(nn.Module):
             nan_mask, torch.zeros_like(weights_from_model), weights_from_model,
         )
 
-        raw_update_weights = torch.clamp(raw_update_weights, min=self.min_model_weight)
+        # raw_update_weights = torch.clamp(raw_update_weights, min=self.min_model_weight)
 
         raw_prior_weights = torch.full_like(raw_update_weights, 0.0)
 

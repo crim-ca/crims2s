@@ -260,6 +260,7 @@ class S2SBayesModelModule(S2STercilesModule):
             "Loss_Epoch/PriorWeights/Train", reg_loss, on_epoch=True, on_step=False
         )
         self.log("Loss_Step/PriorWeights/Train", reg_loss, on_epoch=False, on_step=True)
+        self.log("Loss_Epoch/Fields/Train", fields_loss, on_epoch=True, on_step=False)
 
         self.log(
             "PriorWeights_Epoch/T2M/Train",
@@ -307,6 +308,7 @@ class S2SBayesModelModule(S2STercilesModule):
 
         self.log("Loss_Epoch/All/Val", loss, on_epoch=True, on_step=False)
 
+        self.log("Loss_Epoch/Fields/Val", fields_loss, on_epoch=True, on_step=False)
         self.log("Loss_Epoch/PriorWeights/Val", reg_loss, on_epoch=True, on_step=False)
         self.log(
             "PriorWeights_Epoch/T2M/Val",

@@ -18,6 +18,10 @@ s2s_train model=emos_normalgamma transform=emos_gamma model.biweekly=false,true 
 ```
 
 
+```
+s2s_train model=bayes_conv,bayes_linear module=bayes weights_lr=5e-5,1e-4,5e-4,1e-3 hydra/launcher=submitit_slurm +hydra.launcher.additional_parameters.gres="gpu:1" hydra.launcher.cpus_per_task=6
+```
+
 
 
 ## Inference

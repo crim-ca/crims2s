@@ -29,3 +29,8 @@ logging:
   run_name:
   mlflow_uri: "${oc.env:MLFLOW_TRACKING_URI,http://10.1.48.27:5000}"
   slurm_job_id: "${oc.env:SLURM_JOB_ID}"
+  slurm_array_jobid: "${oc.env:SLURM_ARRAY_JOB_ID}"
+  slurm_array_taskid: "${oc.env:SLURM_ARRAY_TASK_ID}"
+
+weights_lr: 1e-6
+model_lr: 1e-3
