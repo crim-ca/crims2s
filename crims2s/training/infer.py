@@ -147,7 +147,7 @@ def cli(cfg):
         pytorch_example = last_transform(example)
         pytorch_example = example_to_cuda(pytorch_example)
 
-        t2m_terciles, tp_terciles, _, _ = lightning_module(pytorch_example)
+        t2m_terciles, tp_terciles, *_ = lightning_module(pytorch_example)
 
         dataset = terciles_pytorch_to_xarray(
             t2m_terciles.cpu(), tp_terciles.cpu(), example_forecast
