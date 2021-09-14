@@ -3,5 +3,6 @@ transforms:
 - _target_: crims2s.transform.AddBiweeklyDimTransform
   weeks_12: False
 - _target_: crims2s.transform.LinearModelAdapter
+  make_distributions: False
 - _target_: crims2s.transform.AddMetadata
 - _target_: crims2s.transform.ExampleToPytorch

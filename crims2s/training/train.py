@@ -132,11 +132,7 @@ def cli(cfg):
         logger=[tensorboard, mlflow],
         callbacks=[early_stopping, checkpointer, lr_monitor],
         default_root_dir="./lightning/",
-        **cfg.trainer
-        # devices=cfg.devices,
-        # accelerator=cfg.accelerator,
-        # max_epochs=cfg.max_epochs,
-        # accumulate_grad_batches=cfg.accumulate_grad_batches,
+        **cfg.trainer,
     )
 
     if cfg.lr_find:

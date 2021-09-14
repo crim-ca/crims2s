@@ -1,0 +1,3 @@
+input_dir: '***BASEDIR***training-input/'
+output_dir: '***BASEDIR***processed/training-input/'
+label: 'hindcast'

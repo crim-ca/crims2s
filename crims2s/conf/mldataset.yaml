@@ -1,6 +1,6 @@
 defaults:
 - raw_obs: renku
-- fields: mini
+- fields: both_easy
 - set: train
 
 hydra:

@@ -10,6 +10,7 @@ setup(
             "s2s_infer = crims2s.training.infer:cli",
             "s2s_mldataset = crims2s.mldataset:cli",
             "s2s_train = crims2s.training.train:cli",
+            "s2s_split_plev = crims2s.splitter.splitter:cli",
         ]
     },
     packages=find_packages(exclude="test"),

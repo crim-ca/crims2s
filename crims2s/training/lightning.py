@@ -175,7 +175,26 @@ class S2STercilesModule(pl.LightningModule):
         self.log("Loss_Step/Train", loss, on_epoch=False, on_step=True)
         self.log("Loss_Epoch/Train", loss, on_epoch=True, on_step=False)
 
+        self.log_rpss(t2m_terciles, tp_terciles, batch)
+
         return loss
+
+    def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
+        weight_mask = (
+            self.score_weights(batch["latitude"]) if self.reweight_by_area else None
+        )
+
+        rpss_t2m = self.compute_rpss(
+            t2m_terciles, batch["terciles_t2m"], weight_mask=weight_mask
+        )
+        rpss_tp = self.compute_rpss(
+            tp_terciles, batch["terciles_tp"], weight_mask=weight_mask
+        )
+
+        rpss = rpss_t2m + rpss_tp
+        self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
+        self.log(f"RPSS_Epoch/T2M/{label}", rpss_t2m, on_epoch=True, on_step=False)
+        self.log(f"RPSS_Epoch/TP/{label}", rpss_tp, on_epoch=True, on_step=False)
 
     def validation_step(self, batch, batch_id):
         t2m_terciles, tp_terciles = self.forward(batch)
@@ -187,30 +206,29 @@ class S2STercilesModule(pl.LightningModule):
         self.log("val_loss", fields_loss, logger=False, on_step=False, on_epoch=True)
         self.log("Loss_Epoch/Val", fields_loss, on_epoch=True, on_step=False)
 
+        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Val")
+
         return {}
 
-    def score_weights(self, batch):
-        latitude = batch["latitude"]
-
+    def score_weights(self, latitude):
         weights = torch.where(
             latitude > -60.0, torch.cos(torch.deg2rad(torch.abs(latitude))), 0.0
         )
-
-        # We unsqueeze the result so that is can broadcast on anything that has (lat, lon)
-        # as its last dimensions.
-        return weights.unsqueeze(-1)
+        return weights
 
     def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
-        score_weights = self.score_weights(batch)
+        weight_mask = (
+            self.score_weights(batch["latitude"]) if self.reweight_by_area else None
+        )
 
-        t2m_rps = rps(t2m_terciles, batch["terciles_t2m"])
-        if self.reweight_by_area:
-            t2m_rps *= score_weights
+        t2m_rps = self.compute_rps(
+            t2m_terciles, batch["terciles_t2m"], weight_mask=weight_mask
+        )
+        tp_rps = self.compute_rps(
+            tp_terciles, batch["terciles_tp"], weight_mask=weight_mask
+        )
+
         t2m_rps = t2m_rps.mean()
-
-        tp_rps = rps(tp_terciles, batch["terciles_tp"])
-        if self.reweight_by_area:
-            tp_rps *= score_weights
         tp_rps = tp_rps.mean()
 
         loss = t2m_rps + tp_rps
@@ -220,6 +238,30 @@ class S2STercilesModule(pl.LightningModule):
         self.log(f"RPS_Epoch/TP/{label}", tp_rps, on_epoch=True, on_step=False)
 
         return loss
+
+    def compute_rps(self, model, target, weight_mask=None):
+        rps_score = rps(model, target)
+        if weight_mask is not None:
+            rps_score *= weight_mask.unsqueeze(-1)
+
+        return rps_score
+
+    def compute_rpss(self, model, target, weight_mask=None):
+        climatology = torch.full_like(target, 0.33)
+
+        model_rps = self.compute_rps(model, target)
+        climatology_rps = self.compute_rps(climatology, target)
+
+        aggregated_model_rps = model_rps.mean(dim=[0, 1, -1])
+        aggregated_climatology_rps = climatology_rps.mean(dim=[0, 1, -1])
+
+        rpss = 1.0 - aggregated_model_rps / aggregated_climatology_rps
+        rpss_nan_mask = rpss.isnan()
+
+        if weight_mask is not None:
+            rpss *= weight_mask
+
+        return rpss[~rpss_nan_mask].mean()
 
     def configure_optimizers(self):
         return_dict = {
@@ -271,12 +313,7 @@ class S2SBayesModelModule(S2STercilesModule):
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
 
         prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
-
-        reg_loss = torch.square(prior_weights)
-        if self.reweight_by_area:
-            score_mask = self.score_weights(batch)
-            reg_loss *= score_mask
-        reg_loss = self.regularization * reg_loss.mean()
+        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
 
         loss = fields_loss + reg_loss
 
@@ -316,7 +353,20 @@ class S2SBayesModelModule(S2STercilesModule):
             on_step=True,
         )
 
+        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Train")
+
         return loss
+
+    def compute_reg_loss(self, t2m_prior_weights, tp_prior_weights, weights_mask=None):
+        prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
+        square_weights = torch.square(prior_weights)
+
+        if weights_mask is not None:
+            square_weights *= weights_mask
+
+        reg_loss = self.regularization * square_weights.mean()
+
+        return reg_loss
 
     def validation_step(self, batch, batch_id):
         t2m_terciles, tp_terciles, t2m_prior_weights, tp_prior_weights = self.forward(
@@ -327,8 +377,8 @@ class S2SBayesModelModule(S2STercilesModule):
             batch, t2m_terciles, tp_terciles, label="Val"
         )
 
-        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
-        reg_loss = self.regularization * torch.square(prior_weights).mean()
+        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
+
         loss = fields_loss + reg_loss
 
         self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
@@ -351,9 +401,11 @@ class S2SBayesModelModule(S2STercilesModule):
         )
         self.log(
             "PriorWeights_Epoch/All/Val",
-            prior_weights.detach().mean(),
+            torch.stack(t2m_prior_weights, tp_prior_weights).detach().mean(),
             on_epoch=True,
             on_step=False,
         )
+
+        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Val")
 
         return {}
