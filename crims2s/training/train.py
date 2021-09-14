@@ -89,14 +89,16 @@ def cli(cfg):
     )
 
     model = hydra.utils.instantiate(cfg.model)
-    # optimizer = make_optimizer(cfg.optimizer, model)
-    optimizer = torch.optim.Adam(
-        [
-            {"params": model.forecast_model.parameters(), "lr": cfg.model_lr},
-            {"params": model.t2m_weight_model.parameters(), "lr": cfg.weights_lr},
-            {"params": model.tp_weight_model.parameters(), "lr": cfg.weights_lr},
-        ]
-    )
+    # # optimizer = make_optimizer(cfg.optimizer, model)
+    # optimizer = torch.optim.Adam(
+    #     [
+    #         {"params": model.forecast_model.parameters(), "lr": cfg.model_lr},
+    #         {"params": model.t2m_weight_model.parameters(), "lr": cfg.weights_lr},
+    #         {"params": model.tp_weight_model.parameters(), "lr": cfg.weights_lr},
+    #     ]
+    # )
+
+    optimizer = hydra.utils.call(cfg.optimizer, model)
 
     if "scheduler" in cfg:
         scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer)
