@@ -52,21 +52,11 @@ class S2SDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         f = self.files[idx]
 
-        obs = xr.open_dataset(f, group="/obs")
-        model = xr.open_dataset(f, group="/model")
-        terciles = xr.open_dataset(f, group="/terciles")
-        edges = xr.open_dataset(f, group="/edges")
-        parameters = xr.open_dataset(f, group="/model_parameters")
-
-        example = {
-            "obs": obs,
-            "model": model,
-            "terciles": terciles,
-            "edges": edges,
-            "model_parameters": parameters,
-        }
+        groups_to_read = ["/obs", "/model", "/terciles", "/edges", "/model_parameters"]
 
         if self.include_features:
-            example["features"] = xr.open_dataset(f, group="/features")
+            groups_to_read.append("/features")
+
+        example = {k[1:]: xr.open_dataset(f, group=k) for k in groups_to_read}
 
         return example

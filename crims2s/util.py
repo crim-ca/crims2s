@@ -63,6 +63,12 @@ ECMWF_FORECASTS = [
 TEST_THRESHOLD = "2020-01-01"
 
 
+def week_to_forecast_id(week):
+    """Some data arrays use a week number instead of forecast monthday. This is a 
+    converter between week number and forecast monthday."""
+    return ECMWF_FORECASTS[week]
+
+
 def fix_dataset_dims(d):
     """Given one of the dataset files given by the organizers, fix its
     dimensions so its easier to concatenate and use with xr.open_mfdataset.

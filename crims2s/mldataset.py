@@ -40,17 +40,27 @@ class ExamplePartMaker:
 
 
 class FeatureExamplePartMaker(ExamplePartMaker):
-    def __init__(self, features):
+    def __init__(self, features, remove_realizations=False, weekly_steps=False):
         self.features = features
+        self.remove_realizations = remove_realizations
+        self.weekly_steps = weekly_steps
 
     def __call__(self, year, example):
-        return (
+        features = (
             self.features.isel(forecast_monthday=0)
             .sel(forecast_year=year)
             .to_array()
             .rename("features")
             .transpose("lead_time", "latitude", "longitude", "realization", "variable",)
         )
+
+        if self.remove_realizations:
+            features = features.isel(realization=[0])
+
+        if self.weekly_steps:
+            features = features.isel(lead_time=list(range(0, 7 * 6, 7)))
+
+        return features
 
 
 class ModelExamplePartMaker(ExamplePartMaker):
@@ -321,7 +331,14 @@ def cli(cfg):
         _logger.info(f"Will make examples for years: {years.data}")
 
         part_makers = [
-            ("features", FeatureExamplePartMaker(features)),
+            (
+                "features",
+                FeatureExamplePartMaker(
+                    features,
+                    remove_realizations=cfg.remove_realizations,
+                    weekly_steps=True,
+                ),
+            ),
             ("model", ModelExamplePartMaker(model)),
             ("terciles", TercilesExamplePartMaker(obs_terciled)),
             ("obs", ObsExamplePartMaker(raw_obs, cfg.set.valid_threshold)),

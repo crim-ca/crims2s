@@ -10,6 +10,8 @@ output_dir: ???
 center: 'ecmwf'
 n_weeks:   # Amount of weeks to process. None means all weeks. Useful for debugging.
 weeks_12: False  # Whether to add weeks 12 to the examples or only make examples with weeks 3-6.
+remove_realizations: False
+weekly_steps: False
 
 # Switches to generate a specific file. Useful for debugging or parallel execution on Slurm.
 index:

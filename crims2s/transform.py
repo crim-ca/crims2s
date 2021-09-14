@@ -119,6 +119,17 @@ class AddMetadata:
         return example
 
 
+class AddDryMask:
+    def __init__(self, threshold=1.0):
+        self.threshold = threshold
+
+    def __call__(self, example):
+        edges = example["edges"]
+        dry_mask = (edges.isel(category_edge=1) < self.threshold).drop("t2m")
+        example["dry_mask"] = dry_mask
+        return example
+
+
 class ExampleToPytorch:
     def __call__(self, example):
         pytorch_example = {}
@@ -130,6 +141,7 @@ class ExampleToPytorch:
             "terciles",
             "edges",
             "model_parameters",
+            "dry_mask",
         ]:
             if dataset_name in example:
                 dataset = example[dataset_name]

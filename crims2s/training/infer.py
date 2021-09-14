@@ -130,7 +130,7 @@ def cli(cfg):
     checkpoint_path = hydra.utils.to_absolute_path(cfg.checkpoint_dir)
 
     model = hydra.utils.instantiate(cfg.model)
-    optimizer = hydra.utils.instantiate(cfg.optimizer, model.parameters())
+    optimizer = hydra.utils.call(cfg.optimizer, model)
 
     lightning_module = S2STercilesModule.load_from_checkpoint(
         checkpoint_path, model=model, optimizer=optimizer

@@ -44,3 +44,8 @@ See `crims2s/conf/hydra/launcher/submitit_slurm.yaml` to configure the Slurm job
 ```
 s2s_mldataset hydra/launcher=submitit_slurm set=test index="range(0,53)" output_dir=<output> -m
 ```
+
+Test set on the CPU partition.
+```
+s2s_mldataset set=test fields=both_easy remove_realizations=True weekly_steps=True index="range(0,53)" output_dir=<output_dir> hydra/launcher=submitit_slurm +hydra.launcher.partition=cpu hydra.launcher.cpus_per_task=4 hydra.launcher.mem_gb=30 -m
+```
