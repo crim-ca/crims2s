@@ -1,5 +1,4 @@
 from crims2s.transform import t2m_to_normal
-import numpy as np
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
@@ -157,13 +156,19 @@ class S2STercilesModule(pl.LightningModule):
     # We specify default values for model and optimizer even though it doesn't make sense.
     # We do this so that the module can be brought back to life with load_from_checkpoint.
     def __init__(
-        self, model=None, optimizer=None, scheduler=None, reweight_by_area=True
+        self,
+        model=None,
+        optimizer=None,
+        scheduler=None,
+        reweight_by_area=True,
+        ignore_dry_tiles=False,
     ):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.reweight_by_area = reweight_by_area
+        self.ignore_dry_tiles = ignore_dry_tiles
 
     def forward(self, x):
         return self.model(x)
@@ -180,16 +185,8 @@ class S2STercilesModule(pl.LightningModule):
         return loss
 
     def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
-        weight_mask = (
-            self.score_weights(batch["latitude"]) if self.reweight_by_area else None
-        )
-
-        rpss_t2m = self.compute_rpss(
-            t2m_terciles, batch["terciles_t2m"], weight_mask=weight_mask
-        )
-        rpss_tp = self.compute_rpss(
-            tp_terciles, batch["terciles_tp"], weight_mask=weight_mask
-        )
+        rpss_t2m = self.compute_rpss(batch, t2m_terciles, batch["terciles_t2m"])
+        rpss_tp = self.compute_rpss(batch, tp_terciles, batch["terciles_tp"])
 
         rpss = rpss_t2m + rpss_tp
         self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
@@ -210,26 +207,36 @@ class S2STercilesModule(pl.LightningModule):
 
         return {}
 
-    def score_weights(self, latitude):
-        weights = torch.where(
-            latitude > -60.0, torch.cos(torch.deg2rad(torch.abs(latitude))), 0.0
-        )
-        return weights
+    def make_weight_mask(self, batch):
+        dry_mask = batch["dry_mask_tp"]
+
+        # We need to set the dtype manually because dry_mask dtype is bool.
+        # I picked a random matrix inside the batch so as to not hardcode float vs
+        # double in case we change that later.
+        weight_mask = torch.ones_like(dry_mask, dtype=batch["model_t2m"].dtype)
+
+        latitude_mask = batch["latitude"] < -60.0
+        weight_mask[..., latitude_mask, :] = 0.0
+
+        if self.reweight_by_area:
+            latitude = batch["latitude"]
+            lat_weights = torch.cos(torch.deg2rad(torch.abs(latitude)))
+            lat_weights = lat_weights / lat_weights.max()
+            weight_mask *= lat_weights.unsqueeze(-1)
+
+        if self.ignore_dry_tiles:
+            weight_mask[dry_mask] = 0.0
+
+        return weight_mask
 
     def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
-        weight_mask = (
-            self.score_weights(batch["latitude"]) if self.reweight_by_area else None
-        )
+        weight_mask = self.make_weight_mask(batch)
 
-        t2m_rps = self.compute_rps(
-            t2m_terciles, batch["terciles_t2m"], weight_mask=weight_mask
-        )
-        tp_rps = self.compute_rps(
-            tp_terciles, batch["terciles_tp"], weight_mask=weight_mask
-        )
+        t2m_rps = self.compute_rps(t2m_terciles, batch["terciles_t2m"])
+        tp_rps = self.compute_rps(tp_terciles, batch["terciles_tp"])
 
-        t2m_rps = t2m_rps.mean()
-        tp_rps = tp_rps.mean()
+        t2m_rps = (t2m_rps * weight_mask).mean()
+        tp_rps = (tp_rps * weight_mask).mean()
 
         loss = t2m_rps + tp_rps
 
@@ -239,29 +246,28 @@ class S2STercilesModule(pl.LightningModule):
 
         return loss
 
-    def compute_rps(self, model, target, weight_mask=None):
+    def compute_rps(self, model, target):
         rps_score = rps(model, target)
-        if weight_mask is not None:
-            rps_score *= weight_mask.unsqueeze(-1)
-
         return rps_score
 
-    def compute_rpss(self, model, target, weight_mask=None):
+    def compute_rpss(self, batch, model, target):
         climatology = torch.full_like(target, 0.33)
 
         model_rps = self.compute_rps(model, target)
         climatology_rps = self.compute_rps(climatology, target)
 
-        aggregated_model_rps = model_rps.mean(dim=[0, 1, -1])
-        aggregated_climatology_rps = climatology_rps.mean(dim=[0, 1, -1])
+        aggregated_model_rps = model_rps.mean(dim=[0])
+        aggregated_climatology_rps = climatology_rps.mean(dim=[0])
 
         rpss = 1.0 - aggregated_model_rps / aggregated_climatology_rps
+
+        weight_mask = self.make_weight_mask(batch)
+        rpss *= weight_mask
         rpss_nan_mask = rpss.isnan()
 
-        if weight_mask is not None:
-            rpss *= weight_mask
+        weight_zero = weight_mask == 0.0
 
-        return rpss[~rpss_nan_mask].mean()
+        return rpss[~rpss_nan_mask & ~weight_zero].mean()
 
     def configure_optimizers(self):
         return_dict = {
@@ -285,9 +291,9 @@ class S2SBayesModelModule(S2STercilesModule):
         scheduler,
         regularization: float,
         model_only_epochs=0,
-        reweight_by_area=True,
+        **kwargs,
     ):
-        super().__init__(model, optimizer, scheduler, reweight_by_area)
+        super().__init__(model, optimizer, scheduler, **kwargs)
         self.regularization = regularization
         self.model_only_epochs = model_only_epochs
 
@@ -313,7 +319,7 @@ class S2SBayesModelModule(S2STercilesModule):
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
 
         prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
-        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
+        reg_loss = self.compute_reg_loss(batch, t2m_prior_weights, tp_prior_weights)
 
         loss = fields_loss + reg_loss
 
@@ -357,12 +363,12 @@ class S2SBayesModelModule(S2STercilesModule):
 
         return loss
 
-    def compute_reg_loss(self, t2m_prior_weights, tp_prior_weights, weights_mask=None):
+    def compute_reg_loss(self, batch, t2m_prior_weights, tp_prior_weights):
         prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
         square_weights = torch.square(prior_weights)
 
-        if weights_mask is not None:
-            square_weights *= weights_mask
+        weight_mask = self.make_weight_mask(batch)
+        square_weights *= weight_mask
 
         reg_loss = self.regularization * square_weights.mean()
 
@@ -377,7 +383,7 @@ class S2SBayesModelModule(S2STercilesModule):
             batch, t2m_terciles, tp_terciles, label="Val"
         )
 
-        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
+        reg_loss = self.compute_reg_loss(batch, t2m_prior_weights, tp_prior_weights)
 
         loss = fields_loss + reg_loss
 
@@ -401,7 +407,7 @@ class S2SBayesModelModule(S2STercilesModule):
         )
         self.log(
             "PriorWeights_Epoch/All/Val",
-            torch.stack(t2m_prior_weights, tp_prior_weights).detach().mean(),
+            torch.stack([t2m_prior_weights, tp_prior_weights]).detach().mean(),
             on_epoch=True,
             on_step=False,
         )
