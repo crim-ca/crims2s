@@ -186,7 +186,9 @@ class S2STercilesModule(pl.LightningModule):
 
     def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
         t2m_weight_mask = self.make_weight_mask(batch)
-        tp_weight_mask = self.make_weight_mask(batch, dry_mask=self.ignore_dry_tiles)
+        tp_weight_mask = self.make_weight_mask(
+            batch, use_dry_mask=self.ignore_dry_tiles
+        )
 
         rpss_t2m = self.compute_rpss(
             batch, t2m_terciles, batch["terciles_t2m"], t2m_weight_mask
@@ -214,7 +216,7 @@ class S2STercilesModule(pl.LightningModule):
 
         return {}
 
-    def make_weight_mask(self, batch, dry_mask=False):
+    def make_weight_mask(self, batch, use_dry_mask=False):
         dry_mask = batch["dry_mask_tp"]
 
         # We need to set the dtype manually because dry_mask dtype is bool.
@@ -231,14 +233,16 @@ class S2STercilesModule(pl.LightningModule):
             lat_weights = lat_weights / lat_weights.max()
             weight_mask *= lat_weights.unsqueeze(-1)
 
-        if dry_mask:
+        if use_dry_mask:
             weight_mask[dry_mask] = 0.0
 
         return weight_mask
 
     def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
         t2m_weight_mask = self.make_weight_mask(batch)
-        tp_weight_mask = self.make_weight_mask(batch, dry_mask=self.ignore_dry_tiles)
+        tp_weight_mask = self.make_weight_mask(
+            batch, use_dry_mask=self.ignore_dry_tiles
+        )
 
         t2m_rps = self.compute_rps(t2m_terciles, batch["terciles_t2m"])
         tp_rps = self.compute_rps(tp_terciles, batch["terciles_tp"])
@@ -324,9 +328,7 @@ class S2SBayesModelModule(S2STercilesModule):
             batch
         )
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
-
-        prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
-        reg_loss = self.compute_reg_loss(batch, t2m_prior_weights, tp_prior_weights)
+        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
 
         loss = fields_loss + reg_loss
 
@@ -352,6 +354,7 @@ class S2SBayesModelModule(S2STercilesModule):
             on_step=False,
         )
 
+        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
         prior_weights_mean = prior_weights.detach().mean()
         self.log(
             "PriorWeights_Epoch/All/Train",
@@ -370,12 +373,9 @@ class S2SBayesModelModule(S2STercilesModule):
 
         return loss
 
-    def compute_reg_loss(self, batch, t2m_prior_weights, tp_prior_weights):
-        prior_weights = torch.stack([t2m_prior_weights, tp_prior_weights])
+    def compute_reg_loss(self, t2m_prior_weights, tp_prior_weights):
+        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
         square_weights = torch.square(prior_weights)
-
-        weight_mask = self.make_weight_mask(batch)
-        square_weights *= weight_mask
 
         reg_loss = self.regularization * square_weights.mean()
 
@@ -390,7 +390,7 @@ class S2SBayesModelModule(S2STercilesModule):
             batch, t2m_terciles, tp_terciles, label="Val"
         )
 
-        reg_loss = self.compute_reg_loss(batch, t2m_prior_weights, tp_prior_weights)
+        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
 
         loss = fields_loss + reg_loss
 
@@ -414,7 +414,7 @@ class S2SBayesModelModule(S2STercilesModule):
         )
         self.log(
             "PriorWeights_Epoch/All/Val",
-            torch.stack([t2m_prior_weights, tp_prior_weights]).detach().mean(),
+            torch.cat([t2m_prior_weights, tp_prior_weights]).detach().mean(),
             on_epoch=True,
             on_step=False,
         )

@@ -54,26 +54,36 @@ class LinearWeightModel(nn.Module):
 
 
 class ConvolutionalWeightModel(nn.Module):
-    def __init__(self, in_features):
+    def __init__(
+        self, in_features, kernel_size=(5, 5, 2), padding=(2, 2, 0), embedding_size=128
+    ):
         super().__init__()
 
         self.conv1 = nn.Conv3d(
             in_features,
-            128,
-            kernel_size=(5, 5, 5),
+            embedding_size,
+            kernel_size=kernel_size,
             padding_mode="circular",
-            padding=(2, 2, 0),
+            padding=padding,
         )
 
         self.conv2 = nn.Conv3d(
-            128, 128, kernel_size=(5, 5, 5), padding_mode="circular", padding=(2, 2, 0),
+            embedding_size,
+            embedding_size,
+            kernel_size=kernel_size,
+            padding_mode="circular",
+            padding=padding,
         )
 
         self.conv3 = nn.Conv3d(
-            128, 128, kernel_size=(5, 5, 5), padding_mode="circular", padding=(2, 2, 0),
+            embedding_size,
+            embedding_size,
+            kernel_size=kernel_size,
+            padding_mode="circular",
+            padding=padding,
         )
 
-        self.lin = nn.Linear(128, 1)
+        self.lin = nn.Linear(embedding_size, 1)
 
     def forward(self, example):
         # Dims of example: week, lead time, lat, lon, realization, dim.
@@ -162,4 +172,4 @@ class BayesianUpdateModel(nn.Module):
             ~tp_nan_mask, tp_weights[0], torch.zeros_like(tp_weights[0])
         )
 
-        return t2m, tp, t2m_prior_weights, tp_prior_weights
+        return t2m, tp, t2m_prior_weights[~t2m_nan_mask], tp_prior_weights[~tp_nan_mask]

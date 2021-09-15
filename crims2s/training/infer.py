@@ -9,7 +9,7 @@ import xarray as xr
 
 from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
-from .lightning import S2STercilesModule
+from .lightning import S2SBayesModelModule, S2STercilesModule
 
 _logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 defaults:
   - model: emos_normalgamma
-  - optimizer: adam
+  - optimizer: adam_bayes
   - transform: emos_cube
   - module: tercile
 
@@ -14,7 +14,7 @@ hydra:
     subdir: ${hydra.job.num}
   
 user: ${oc.env:USER}
-dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-08-w-features
+dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-14-lean
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 validate_from: 2018
 
@@ -38,5 +38,5 @@ logging:
   slurm_array_jobid: "${oc.env:SLURM_ARRAY_JOB_ID,null}"
   slurm_array_taskid: "${oc.env:SLURM_ARRAY_TASK_ID,null}"
 
-weights_lr: 1e-6
+weights_lr: 1e-5
 model_lr: 1e-3
