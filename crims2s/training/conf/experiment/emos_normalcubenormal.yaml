@@ -1,0 +1,9 @@
+defaults:
+- dataset: lean
+- module: tercile
+- model: emos_monthly_normalcubenormal
+- optimizer: adam
+- transform: emos_cube
+
+dataset:
+  include_features: False

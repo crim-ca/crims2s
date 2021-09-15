@@ -1,8 +1,5 @@
 defaults:
-  - model: emos_normalgamma
-  - optimizer: adam_bayes
-  - transform: emos_cube
-  - module: tercile
+  - experiment: bayes_conv_lean
 
 hydra:
   job:
@@ -12,31 +9,22 @@ hydra:
   sweep:
     dir: ${oc.env:S2S_RUNS,.}/train/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.num}
-  
-user: ${oc.env:USER}
-dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-14-lean
+
+experiment:
+  user: ${oc.env:USER}
+  logging:
+    experiment_name: "S2S_Bayes_3"
+    run_name: "${hydra:runtime.choices.experiment}"
+    mlflow_uri: "${oc.env:MLFLOW_TRACKING_URI,http://10.1.48.27:5000}"
+    slurm_job_id: "${oc.env:SLURM_JOB_ID,null}"
+    slurm_array_jobid: "${oc.env:SLURM_ARRAY_JOB_ID,null}"
+    slurm_array_taskid: "${oc.env:SLURM_ARRAY_TASK_ID,null}"
+  # Config for lightning trainer.
+  trainer:
+    accelerator: auto
+    devices: 1
+    max_epochs: 100
+    accumulate_grad_batches: 4
+
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
-validate_from: 2018
-
-# Config for lightning trainer.
-trainer:
-  accelerator: auto
-  devices: 1
-  max_epochs: 100
-  accumulate_grad_batches: 4
-  fast_dev_run: False
 lr_find: False
-include_features: True
-early_stopping:
-  patience: 5
-index:
-logging:
-  experiment_name: "S2S_Bayes_3"
-  run_name:
-  mlflow_uri: "${oc.env:MLFLOW_TRACKING_URI,http://10.1.48.27:5000}"
-  slurm_job_id: "${oc.env:SLURM_JOB_ID,null}"
-  slurm_array_jobid: "${oc.env:SLURM_ARRAY_JOB_ID,null}"
-  slurm_array_taskid: "${oc.env:SLURM_ARRAY_TASK_ID,null}"
-
-weights_lr: 1e-5
-model_lr: 1e-3
