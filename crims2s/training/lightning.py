@@ -185,8 +185,15 @@ class S2STercilesModule(pl.LightningModule):
         return loss
 
     def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
-        rpss_t2m = self.compute_rpss(batch, t2m_terciles, batch["terciles_t2m"])
-        rpss_tp = self.compute_rpss(batch, tp_terciles, batch["terciles_tp"])
+        t2m_weight_mask = self.make_weight_mask(batch)
+        tp_weight_mask = self.make_weight_mask(batch, dry_mask=self.ignore_dry_tiles)
+
+        rpss_t2m = self.compute_rpss(
+            batch, t2m_terciles, batch["terciles_t2m"], t2m_weight_mask
+        )
+        rpss_tp = self.compute_rpss(
+            batch, tp_terciles, batch["terciles_tp"], tp_weight_mask
+        )
 
         rpss = rpss_t2m + rpss_tp
         self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
@@ -207,7 +214,7 @@ class S2STercilesModule(pl.LightningModule):
 
         return {}
 
-    def make_weight_mask(self, batch):
+    def make_weight_mask(self, batch, dry_mask=False):
         dry_mask = batch["dry_mask_tp"]
 
         # We need to set the dtype manually because dry_mask dtype is bool.
@@ -224,19 +231,20 @@ class S2STercilesModule(pl.LightningModule):
             lat_weights = lat_weights / lat_weights.max()
             weight_mask *= lat_weights.unsqueeze(-1)
 
-        if self.ignore_dry_tiles:
+        if dry_mask:
             weight_mask[dry_mask] = 0.0
 
         return weight_mask
 
     def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
-        weight_mask = self.make_weight_mask(batch)
+        t2m_weight_mask = self.make_weight_mask(batch)
+        tp_weight_mask = self.make_weight_mask(batch, dry_mask=self.ignore_dry_tiles)
 
         t2m_rps = self.compute_rps(t2m_terciles, batch["terciles_t2m"])
         tp_rps = self.compute_rps(tp_terciles, batch["terciles_tp"])
 
-        t2m_rps = (t2m_rps * weight_mask).mean()
-        tp_rps = (tp_rps * weight_mask).mean()
+        t2m_rps = (t2m_rps * t2m_weight_mask).mean()
+        tp_rps = (tp_rps * tp_weight_mask).mean()
 
         loss = t2m_rps + tp_rps
 
@@ -250,7 +258,7 @@ class S2STercilesModule(pl.LightningModule):
         rps_score = rps(model, target)
         return rps_score
 
-    def compute_rpss(self, batch, model, target):
+    def compute_rpss(self, batch, model, target, weight_mask):
         climatology = torch.full_like(target, 0.33)
 
         model_rps = self.compute_rps(model, target)
@@ -261,7 +269,6 @@ class S2STercilesModule(pl.LightningModule):
 
         rpss = 1.0 - aggregated_model_rps / aggregated_climatology_rps
 
-        weight_mask = self.make_weight_mask(batch)
         rpss *= weight_mask
         rpss_nan_mask = rpss.isnan()
 

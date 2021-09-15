@@ -12,7 +12,7 @@ hydra:
     dir: ${oc.env:S2S_RUNS,.}/infer/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.num}
 user: ${oc.env:USER}
-dataset_dir: /***HOME***fast_scratch/s2s/mlready/2021-09-08-w-features-test
+dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-14-lean
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 begin: 2018
 end: 2021
