@@ -26,3 +26,4 @@ tp_weight_model:
     - 2
     - 2
     - 1
+bias_correction: False

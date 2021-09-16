@@ -2,11 +2,17 @@ import torch
 
 
 def bayes_optimizer(model, cls, forecast_lr, weights_lr, **kwargs):
+    weight_params = set(
+        set(model.t2m_weight_model.parameters()).union(
+            model.tp_weight_model.parameters()
+        )
+    )
+    other_params = set(model.parameters()) - weight_params
+
     return cls(
         [
-            {"params": model.forecast_model.parameters(), "lr": forecast_lr, **kwargs},
-            {"params": model.t2m_weight_model.parameters(), "lr": weights_lr, **kwargs},
-            {"params": model.tp_weight_model.parameters(), "lr": weights_lr, **kwargs},
+            {"params": list(other_params), "lr": forecast_lr, **kwargs},
+            {"params": list(weight_params), "lr": weights_lr, **kwargs},
         ]
     )
 

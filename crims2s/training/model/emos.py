@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from .util import ModelMultiplexer
 from ...distribution import Gamma
 from ...util import ECMWF_FORECASTS
 
@@ -16,34 +17,6 @@ __all__ = [
     "NormalGammaMultiplexedEMOS",
     "NormalCubeNormalMultiplexedEMOS",
 ]
-
-
-class ModelMultiplexer(nn.Module):
-    """Dispatch the training examples to multiple models depending on the example.
-    For instance, we could use this to use a different model for every monthday forecast.
-
-    Because it uses an arbitraty model for every sample, this module does not support batching.
-    To use it, it is recommended to disable automatic batching on the dataloader."""
-
-    def __init__(self, key, models):
-        """Args:
-            key: If a str, used as a key to fetch the model name from the example dict.
-                 If a callable, called on the example and should return to model name to use.
-            models: A mapping from model names to model instances. They keys should correspond to what is returned when applying key on the example."""
-        super().__init__()
-
-        if isinstance(key, str):
-            self.key_fn = lambda x: x[key]
-        else:
-            self.key_fn = key
-
-        self.models = nn.ModuleDict(models)
-
-    def forward(self, example):
-        model_name = self.key_fn(example)
-        model = self.models[model_name]
-
-        return model(example)
 
 
 class LinearModel(nn.Module):

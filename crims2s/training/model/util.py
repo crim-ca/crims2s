@@ -2,6 +2,51 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+from ...util import ECMWF_FORECASTS
+
+
+class ModelMultiplexer(nn.Module):
+    """Dispatch the training examples to multiple models depending on the example.
+    For instance, we could use this to use a different model for every monthday forecast.
+
+    Because it uses an arbitraty model for every sample, this module does not support batching.
+    To use it, it is recommended to disable automatic batching on the dataloader."""
+
+    def __init__(self, key, models):
+        """Args:
+            key: If a str, used as a key to fetch the model name from the example dict.
+                 If a callable, called on the example and should return to model name to use.
+            models: A mapping from model names to model instances. They keys should correspond to what is returned when applying key on the example."""
+        super().__init__()
+
+        if isinstance(key, str):
+            self.key_fn = lambda x: x[key]
+        else:
+            self.key_fn = key
+
+        self.models = nn.ModuleDict(models)
+
+    def forward(self, example):
+        model_name = self.key_fn(example)
+        model = self.models[model_name]
+
+        return model(example)
+
+
+class WeeklyModel(ModelMultiplexer):
+    def __init__(self, cls, **kwargs):
+        monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
+        weekly_models = {monthday: cls(**kwargs) for monthday in monthdays}
+
+        super().__init__("monthday", weekly_models)
+
+
+class MonthlyModel(ModelMultiplexer):
+    def __init__(self, cls, **kwargs):
+        monthly_models = {f"{month:02}": cls(**kwargs) for month in range(1, 13)}
+
+        super().__init__(lambda x: x["monthday"][:2], monthly_models)
+
 
 def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0):
     edges_nan_mask = edges.isnan()

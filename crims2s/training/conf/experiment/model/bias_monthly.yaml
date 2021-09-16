@@ -1,0 +1,3 @@
+_target_: crims2s.training.model.util.DistributionModelAdapter
+model:
+  _target_: crims2s.training.model.bias.MonthlyBiasCorrection
