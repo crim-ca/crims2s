@@ -105,7 +105,12 @@ class ConvolutionalWeightModel(nn.Module):
 
 class BayesianUpdateModel(nn.Module):
     def __init__(
-        self, forecast_model, t2m_weight_model, tp_weight_model, min_model_weight=0.0,
+        self,
+        forecast_model,
+        t2m_weight_model,
+        tp_weight_model,
+        min_model_weight=0.0,
+        weight_model_factor=1.0,
     ):
         super().__init__()
         self.forecast_model = forecast_model
@@ -114,9 +119,10 @@ class BayesianUpdateModel(nn.Module):
         self.t2m_to_terciles = DistributionToTerciles()
         self.tp_to_terciles = DistributionToTerciles()
         self.min_model_weight = min_model_weight
+        self.weight_model_factor = weight_model_factor
 
     def make_weights(self, weight_model, features, nan_mask):
-        weights_from_model = weight_model(features)
+        weights_from_model = self.weight_model_factor * weight_model(features)
 
         raw_update_weights = torch.where(
             nan_mask, torch.zeros_like(weights_from_model), weights_from_model,

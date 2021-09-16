@@ -120,13 +120,13 @@ class AddMetadata:
 
 
 class AddDryMask:
-    def __init__(self, threshold=1.0):
+    def __init__(self, threshold=0.01):
         self.threshold = threshold
 
     def __call__(self, example):
         edges = example["edges"]
-        dry_mask = (edges.isel(category_edge=1) < self.threshold).drop("t2m")
-        example["dry_mask"] = dry_mask
+        wet_mask = (edges.isel(category_edge=0) > self.threshold).drop("t2m")
+        example["dry_mask"] = ~wet_mask
         return example
 
 

@@ -3,6 +3,7 @@ import hydra
 import logging
 import numpy as np
 import os
+import pathlib
 import torch
 import tqdm
 import xarray as xr
@@ -82,9 +83,18 @@ def example_to_cuda(example):
     return new_example
 
 
+def find_checkpoint_file(checkpoint_dir):
+    checkpoint_dir = pathlib.Path(checkpoint_dir)
+    checkpoint_files = sorted(list(checkpoint_dir.rglob("*.ckpt")))
+
+    print(checkpoint_files)
+
+    return checkpoint_files[-1]
+
+
 @hydra.main(config_path="conf", config_name="infer")
 def cli(cfg):
-    transform = hydra.utils.instantiate(cfg.transform)
+    transform = hydra.utils.instantiate(cfg.experiment.transform)
 
     # The last transform is usually the one that turns everything into pytorch format.
     # We remove it from the transform and perform it directly in the inference loop.
@@ -99,8 +109,8 @@ def cli(cfg):
 
     years = list(range(cfg.begin, cfg.end))
 
-    if cfg.index is not None:
-        month, day = ECMWF_FORECASTS[cfg.index]
+    if cfg.experiment.dataset.index is not None:
+        month, day = ECMWF_FORECASTS[cfg.experiment.dataset.index]
         label = f"{month:02}{day:02}.nc"
 
         _logger.info("Targetting monthday %s", label)
@@ -110,7 +120,7 @@ def cli(cfg):
 
     dataset = TransformedDataset(
         S2SDataset(
-            cfg.dataset_dir,
+            cfg.test_dataset_dir,
             years=years,
             name_filter=name_filter,
             include_features=True,
@@ -127,10 +137,13 @@ def cli(cfg):
         shuffle=False,
     )
 
-    checkpoint_path = hydra.utils.to_absolute_path(cfg.checkpoint_dir)
+    checkpoint_path = find_checkpoint_file(
+        hydra.utils.to_absolute_path(cfg.checkpoint_dir)
+    )
+    _logger.info(f"Will run on checkpoint {checkpoint_path}")
 
-    model = hydra.utils.instantiate(cfg.model)
-    optimizer = hydra.utils.call(cfg.optimizer, model)
+    model = hydra.utils.instantiate(cfg.experiment.model)
+    optimizer = hydra.utils.call(cfg.experiment.optimizer, model)
 
     lightning_module = S2STercilesModule.load_from_checkpoint(
         checkpoint_path, model=model, optimizer=optimizer
