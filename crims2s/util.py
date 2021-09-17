@@ -103,6 +103,11 @@ def fix_dataset_dims(d):
     return new_d
 
 
+def fix_s2s_dataset_dims(s2s_dataset):
+    """Fix the dims of a file coming directly from the S2S data repository."""
+    return s2s_dataset.rename(X="longitude", Y="latitude", L="lead_time")
+
+
 def add_biweekly_dim(dataset, weeks_12=True):
     """From a dataset with a lead time, add a dimension so that there is one
     dimension for which biweekly forecast we're in, and one dimension for the lead time

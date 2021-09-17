@@ -23,3 +23,7 @@ def bayes_adam(model, forecast_lr, weights_lr):
 
 def adam(model, **kwargs):
     return torch.optim.Adam(model.parameters(), **kwargs)
+
+
+def adagrad(model, **kwargs):
+    return torch.optim.Adagrad(model.parameters(), **kwargs)

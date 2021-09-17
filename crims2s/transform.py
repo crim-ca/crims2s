@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import xarray as xr
 
-from .util import add_biweekly_dim, obs_to_biweekly, std_estimator
+from .util import add_biweekly_dim, obs_to_biweekly, std_estimator, fix_s2s_dataset_dims
 
 FIELD_MEAN = {
     "gh10": 30583.0,
@@ -18,6 +18,7 @@ FIELD_MEAN = {
     "gh850": 1403.0,
     "lsm": 0.0,
     "msl": 100969.28,
+    "orog": 387.1,
     "siconc": 0.17,
     "sst": 286.96,
     "st100": 268.75,
@@ -46,6 +47,7 @@ FIELD_STD = {
     "gh850": 149.6,
     "lsm": 1.0,
     "msl": 1343.6,
+    "orog": 856.0,
     "siconc": 0.35,
     "sst": 11.73,
     "st100": 26.74,
@@ -259,3 +261,20 @@ class AddLatLonFeature:
         example["features_features"] = new_feature
 
         return example
+
+
+class AddGeographyFeatures:
+    def __init__(self, geography_file):
+        geo_dataset = fix_s2s_dataset_dims(xr.open_dataset(geography_file))
+        subset = geo_dataset[["orog"]]
+
+        geo = normalize_dataset(subset)
+        self.geo_features = geo.to_array().to_dataset(name="features")
+
+    def __call__(self, batch):
+        features = batch["features"]
+        new_features_dataset = xr.concat([features, self.geo_features], dim="variable")
+
+        batch["features"] = new_features_dataset
+
+        return batch

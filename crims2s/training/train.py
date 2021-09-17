@@ -22,21 +22,6 @@ class ModelCheckpoint(pl_callbacks.ModelCheckpoint):
         return super().on_save_checkpoint(trainer, pl_module, checkpoint)
 
 
-def make_optimizer(cfg, model):
-    if "_target_" in cfg:
-        return hydra.utils.instantiate(cfg, model.parameters())
-    elif isinstance(cfg, collections.abc.Mapping):
-        optimizers = []
-        for k, v in cfg.items():
-            parameters = getattr(model, k).parameters()
-            optimizer = hydra.utils.instantiate(v, parameters)
-            optimizers.append({"optimizer": optimizer})
-
-        return optimizers
-    else:
-        raise RuntimeError("Coud not interpret optimizer configuration.")
-
-
 def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 

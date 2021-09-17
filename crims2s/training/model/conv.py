@@ -71,13 +71,14 @@ class DistributionConvPostProcessing(nn.Module):
         super().__init__()
         self.conv_model = conv_model
         self.regularization = regularization
-        self.debias = debias
 
         if debias:
             self.debias_model = ModelParameterBiasCorrection()
+        else:
+            self.debias_model = None
 
     def forward(self, batch):
-        if self.debias:
+        if self.debias_model is not None:
             batch = self.debias_model(batch)
 
         x = batch["features_features"]
@@ -107,8 +108,8 @@ class DistributionConvPostProcessing(nn.Module):
 
 
 class ConvPostProcessing(DistributionModelAdapter):
-    def __init__(self, in_features, n_blocks, embedding_size):
+    def __init__(self, in_features, n_blocks, embedding_size, debias=False):
         conv_model = ConvModel(in_features, 4, n_blocks, embedding_size)
-        distribution_model = DistributionConvPostProcessing(conv_model)
+        distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
 
         super().__init__(distribution_model)
