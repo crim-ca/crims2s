@@ -3,9 +3,11 @@ is normalization of the fields before sending them to a neural net.
 
 See notebook distributions-of-parameters.ipynb"""
 
+import numpy as np
 import torch
+import xarray as xr
 
-from .util import add_biweekly_dim
+from .util import add_biweekly_dim, obs_to_biweekly, std_estimator, fix_s2s_dataset_dims
 
 FIELD_MEAN = {
     "gh10": 30583.0,
@@ -16,6 +18,7 @@ FIELD_MEAN = {
     "gh850": 1403.0,
     "lsm": 0.0,
     "msl": 100969.28,
+    "orog": 387.1,
     "siconc": 0.17,
     "sst": 286.96,
     "st100": 268.75,
@@ -44,6 +47,7 @@ FIELD_STD = {
     "gh850": 149.6,
     "lsm": 1.0,
     "msl": 1343.6,
+    "orog": 856.0,
     "siconc": 0.35,
     "sst": 11.73,
     "st100": 26.74,
@@ -87,43 +91,76 @@ def apply_to_all(transform, example):
     return new_example
 
 
-def add_biweekly_dim_transform(example):
+class AddBiweeklyDimTransform:
     """Transform that takes a training example and adds the biweekly dimension to it."""
-    new_example = {}
-    for k in example:
-        if k in ["model", "obs", "features"]:
-            new_example[k] = add_biweekly_dim(example[k])
-        else:
-            new_example[k] = example[k]
 
-    return new_example
+    def __init__(self, weeks_12=False):
+        self.weeks_12 = weeks_12
+
+    def __call__(self, example):
+        new_example = {}
+        for k in example:
+            if k in ["model", "obs"]:
+                new_example[k] = add_biweekly_dim(example[k], weeks_12=self.weeks_12)
+            else:
+                new_example[k] = example[k]
+
+        return new_example
 
 
-def add_metadata(example):
+class AddMetadata:
     """Add various metadata to the example dict."""
-    model = example["model"]
-    month = int(model.forecast_time.dt.month)
-    day = int(model.forecast_time.dt.day)
-    example["monthday"] = f"{month:02}{day:02}"
 
-    return example
+    def __call__(self, example):
+        model = example["model"]
+        month = int(model.forecast_time.dt.month)
+        day = int(model.forecast_time.dt.day)
+        example["monthday"] = f"{month:02}{day:02}"
+
+        example["latitude"] = model.latitude
+        example["longitude"] = model.longitude
+
+        return example
 
 
-def example_to_pytorch(example):
-    pytorch_example = {}
+class AddDryMask:
+    def __init__(self, threshold=0.01):
+        self.threshold = threshold
 
-    for dataset_name in ["obs", "model", "features", "target", "edges"]:
-        if dataset_name in example:
-            dataset = example[dataset_name]
-            for variable in dataset.data_vars:
-                pytorch_example[f"{dataset_name}_{variable}"] = torch.from_numpy(
-                    dataset[variable].data
-                )
+    def __call__(self, example):
+        edges = example["edges"]
+        wet_mask = (edges.isel(category_edge=0) > self.threshold).drop("t2m")
+        example["dry_mask"] = ~wet_mask
+        return example
 
-    for k in ["monthday"]:
-        pytorch_example[k] = example[k]
 
-    return pytorch_example
+class ExampleToPytorch:
+    def __call__(self, example):
+        pytorch_example = {}
+
+        for dataset_name in [
+            "obs",
+            "model",
+            "features",
+            "terciles",
+            "edges",
+            "model_parameters",
+            "dry_mask",
+        ]:
+            if dataset_name in example:
+                dataset = example[dataset_name]
+                for variable in dataset.data_vars:
+                    pytorch_example[f"{dataset_name}_{variable}"] = torch.from_numpy(
+                        dataset[variable].data
+                    )
+
+        for k in ["monthday"]:
+            pytorch_example[k] = example[k]
+
+        for k in ["latitude", "longitude"]:
+            pytorch_example[k] = torch.from_numpy(example[k].data)
+
+        return pytorch_example
 
 
 class CompositeTransform:
@@ -136,3 +173,108 @@ class CompositeTransform:
             transformed_example = t(transformed_example)
 
         return transformed_example
+
+    def __repr__(self):
+        inner_str = ", ".join([repr(t) for t in self.transforms])
+
+        return f"CompositeTransform([{inner_str}])"
+
+
+def t2m_to_normal(model):
+    model_t2m_mean = model.t2m.mean(dim=["lead_time", "realization"]).rename("t2m_mu")
+    model_t2m_std = std_estimator(model.t2m, dim=["lead_time", "realization"]).rename(
+        "t2m_sigma"
+    )
+
+    return xr.merge([model_t2m_mean, model_t2m_std]).rename(
+        biweekly_forecast="lead_time"
+    )
+
+
+def tp_to_normal(model):
+    model_tp_mean = model.tp.isel(lead_time=-1).mean(dim="realization").rename("tp_mu")
+    model_tp_std = std_estimator(model.tp.isel(lead_time=-1), dim="realization").rename(
+        "tp_sigma"
+    )
+
+    return (
+        xr.merge([model_tp_mean, model_tp_std])
+        .drop("lead_time")
+        .rename(biweekly_forecast="lead_time")
+    )
+
+
+def model_to_distribution(model):
+    model_t2m = t2m_to_normal(model)
+    model_tp = tp_to_normal(model)
+
+    return xr.merge([model_t2m, model_tp])
+
+
+class LinearModelAdapter:
+    def __init__(self, make_distributions=True):
+        self.make_distributions = make_distributions
+
+    def __call__(self, example):
+        if self.make_distributions:
+            example["model"] = model_to_distribution(example["model"])
+
+        example["obs"] = obs_to_biweekly(example["obs"])
+
+        return example
+
+
+class CubeRootTP:
+    """Apply a cubic root on precipitation data."""
+
+    def __init__(self):
+        pass
+
+    def __call__(self, example):
+        for k in ["obs_tp", "edges_tp"]:
+            example[k] = example[k] ** (1.0 / 3.0)
+
+        return example
+
+
+class AddLatLonFeature:
+    def __init__(self):
+        pass
+
+    def __call__(self, example):
+        features = example["features_features"]
+        lat = example["latitude"]
+        lon = example["longitude"]
+
+        lat_feature = torch.zeros(121, 240)
+        lat_feature[:, :] = (lat / lat.max()).unsqueeze(dim=-1)
+
+        lon_feature = torch.zeros(121, 240)
+        lon_feature[:] = torch.sin((lon / 360.0) * 2.0 * np.pi)
+
+        lat_lon_features = torch.stack([lat_feature, lon_feature], dim=-1).unsqueeze(-2)
+
+        lat_lon_features_weekly = torch.zeros_like(features[..., :2])
+        lat_lon_features_weekly[:, :] = lat_lon_features
+
+        new_feature = torch.cat([features, lat_lon_features_weekly], dim=-1)
+        example["features_features"] = new_feature
+
+        return example
+
+
+class AddGeographyFeatures:
+    def __init__(self, geography_file):
+        geo_dataset = fix_s2s_dataset_dims(xr.open_dataset(geography_file))
+        subset = geo_dataset[["orog"]]
+
+        geo = normalize_dataset(subset)
+        self.geo_features = geo.to_array().to_dataset(name="features")
+
+    def __call__(self, batch):
+        features = batch["features"]
+        new_features_dataset = xr.concat([features, self.geo_features], dim="variable")
+
+        batch["features"] = new_features_dataset
+
+        return batch

@@ -1,0 +1,11 @@
+aggregated_obs: 
+  deterministic: ***BASEDIR***2/from-template-lfs/forecast-like_observations_2020_biweekly_deterministic.nc
+  terciled: ***BASEDIR***2/from-template-lfs/forecast-like_observations_2020_biweekly_terciled.nc
+  edges: ***BASEDIR***2/from-template-lfs/hindcast-like-observations_2000-2019_biweekly_tercile-edges.nc
+input:
+  flat: '***BASEDIR***test-input'
+  plev: '***BASEDIR***processed/test-input'
+last_forecast:
+year: 2020
+file_label: "forecast"
+valid_threshold:

@@ -1,0 +1,12 @@
+defaults:
+- dataset: lean
+- module: tercile
+- model: emos_monthly_normalcubenormal
+- optimizer: adam
+- transform: emos_cube
+
+dataset:
+  include_features: False
+batch_size: 
+trainer:
+  accumulate_grad_batches: 4

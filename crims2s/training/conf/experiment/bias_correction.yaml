@@ -1,0 +1,22 @@
+defaults:
+  - dataset: lean
+  - module: tercile
+  - model: bias_yearly  # Also good: bias_yearly, bias_monthly, bias_weekly.
+  - optimizer: adam
+  - transform: emos_cube
+  - scheduler: reduce_lr_on_plateau
+
+include_features: False
+early_stopping:
+  patience: 10
+
+optimizer:
+  lr: 5e-3
+
+scheduler:
+  patience: 3
+
+batch_size: 
+
+trainer:
+  accumulate_grad_batches: 4

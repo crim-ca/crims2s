@@ -1,0 +1,14 @@
+defaults:
+  - dataset: lean
+  - module: tercile
+  - model: conv
+  - optimizer: adam
+  - transform: latlon
+
+include_features: True
+early_stopping:
+  patience: 10
+
+batch_size: 4
+
+optimizer.weight_decay: 1e-6

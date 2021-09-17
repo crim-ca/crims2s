@@ -1,0 +1,14 @@
+defaults:
+  - dataset: lean
+  - module: bayes
+  - model: bayes_conv_2d
+  - optimizer: adam_bayes
+  - transform: emos_cube
+
+include_features: True
+early_stopping:
+  patience: 10
+
+batch_size: 
+trainer:
+  accumulate_grad_batches: 4

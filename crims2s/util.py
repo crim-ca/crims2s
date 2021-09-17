@@ -60,7 +60,13 @@ ECMWF_FORECASTS = [
 ]
 
 # The last date at which we can use the obs for training.
-TEST_THRESHOLD = "2019-12-31"
+TEST_THRESHOLD = "2020-01-01"
+
+
+def week_to_forecast_id(week):
+    """Some data arrays use a week number instead of forecast monthday. This is a 
+    converter between week number and forecast monthday."""
+    return ECMWF_FORECASTS[week]
 
 
 def fix_dataset_dims(d):
@@ -97,12 +103,20 @@ def fix_dataset_dims(d):
     return new_d
 
 
-def add_biweekly_dim(dataset):
+def fix_s2s_dataset_dims(s2s_dataset):
+    """Fix the dims of a file coming directly from the S2S data repository."""
+    return s2s_dataset.rename(X="longitude", Y="latitude", L="lead_time")
+
+
+def add_biweekly_dim(dataset, weeks_12=True):
     """From a dataset with a lead time, add a dimension so that there is one
     dimension for which biweekly forecast we're in, and one dimension for the lead time
     whithin that biweekly forecast."""
     weeklys = []
-    for s in [slice("0D", "13D"), slice("14D", "27D"), slice("28D", "41D")]:
+
+    slices = [slice("0D", "13D"), slice("14D", "27D"), slice("28D", "41D")]
+
+    for s in slices:
         weekly_forecast = dataset.sel(lead_time=s)
 
         first_lead = pd.to_timedelta(s.start)
@@ -115,9 +129,7 @@ def add_biweekly_dim(dataset):
         )
         weeklys.append(weekly_forecast)
 
-    with_weekly = xr.concat(weeklys, dim="biweekly_forecast").transpose(
-        "forecast_year", "forecast_monthday", "biweekly_forecast", ...
-    )
+    with_weekly = xr.concat(weeklys, dim="biweekly_forecast")
 
     # Fix the validity time for the first step (which we don't have any data for).
     with_weekly["valid_time"] = (
@@ -146,11 +158,45 @@ def add_biweekly_dim(dataset):
             dim="biweekly_forecast",
         )
 
-        # with_weekly["tp"] = new_tp.clip(
-        ##    min=0.0
-        # )  # Clip is temporary until we figure out why tp isn't monotonous in ECMWF dataset.
+        with_weekly["tp"] = new_tp.clip(
+            min=0.0
+        )  # See recommendation https://renkulab.io/gitlab/aaron.spring/s2s-ai-challenge/-/issues/38.
 
-        with_weekly["tp"] = new_tp
+    if weeks_12:
+        return with_weekly
+    else:
+        return with_weekly.isel(biweekly_forecast=[1, 2])
 
-    return with_weekly
 
+def std_estimator(dataset, dim=None):
+    """Estimator for the sigma parameter of a normal distribution. It is different from 
+    calling std directly because it uses n - 1 on the denominator instead of n."""
+    dataset_mean = dataset.mean(dim=dim)
+
+    if dim is None:
+        dim_sizes = [dataset.sizes[x] for x in dataset_mean.dims]
+    elif isinstance(dim, str):
+        dim_sizes = dataset.sizes[dim]
+    else:
+        dim_sizes = [dataset.sizes[x] for x in dim]
+
+    n = np.prod(dim_sizes)
+
+    return xr.ufuncs.sqrt(
+        xr.ufuncs.square(dataset - dataset_mean).sum(dim=dim) / (n - 1)
+    )
+
+
+def obs_to_biweekly(obs):
+    """Given an xarray Dataset that contains observations, aggregate them into a
+    biweekly format."""
+    aggregate_obs_tp = obs.pr.sum(dim="lead_time", min_count=2).rename("tp")
+    aggregate_obs_t2m = obs.t2m.mean(dim="lead_time")
+
+    aggregate = xr.merge([aggregate_obs_tp, aggregate_obs_t2m]).rename(
+        {"biweekly_forecast": "lead_time"}
+    )
+
+    return aggregate.assign_coords(
+        valid_time=aggregate.forecast_time + aggregate.lead_time
+    )

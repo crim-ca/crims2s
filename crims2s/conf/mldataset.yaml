@@ -1,16 +1,23 @@
 defaults:
-- observations: arlan
-- fields: small
+- raw_obs: renku
+- fields: both_easy
+- set: train
 
 hydra:
+  run:
+    dir: ${oc.env:S2S_RUNS,.}/dataset/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${oc.env:S2S_RUNS,.}/dataset/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
   job:
     name: "S2S_MLDataset"
-input_dir: '***BASEDIR***training-input'
-input_dir_plev: '***BASEDIR***processed/training-input'
-terciled_obs_file: '***BASEDIR***/renku/hindcast-like-observations_2000-2019_biweekly_terciled.nc'
-edges_file: '***BASEDIR***/edges/renku.nc'
+
 output_dir: ???
 center: 'ecmwf'
 n_weeks:   # Amount of weeks to process. None means all weeks. Useful for debugging.
+weeks_12: False  # Whether to add weeks 12 to the examples or only make examples with weeks 3-6.
+remove_realizations: False
+weekly_steps: False
 
+# Switches to generate a specific file. Useful for debugging or parallel execution on Slurm.
 index:

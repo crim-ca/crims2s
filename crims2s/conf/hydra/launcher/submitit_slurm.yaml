@@ -3,7 +3,7 @@ cpus_per_task: 8
 tasks_per_node: 1
 nodes: 1
 mem_gb: 64
-array_parallelism: 12
+array_parallelism: 20
 setup:
   - source ${env:HOME}/.bashrc
   - conda activate s2s

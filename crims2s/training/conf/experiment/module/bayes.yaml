@@ -1,0 +1,5 @@
+_target_: crims2s.training.lightning.S2SBayesModelModule
+regularization: 1e-2
+model_only_epochs: 1
+reweight_by_area: True
+ignore_dry_tiles: False  # This is already done in the obs, we don't need that treatment.

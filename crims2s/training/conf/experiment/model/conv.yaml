@@ -1,0 +1,5 @@
+_target_: crims2s.training.model.conv.ConvPostProcessing
+in_features: 16
+n_blocks: 6
+embedding_size: 64
+debias: False
