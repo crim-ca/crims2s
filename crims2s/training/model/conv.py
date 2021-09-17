@@ -1,6 +1,7 @@
 import torch.distributions
 import torch.nn as nn
 
+from .bias import ModelParameterBiasCorrection
 from .util import DistributionModelAdapter
 
 
@@ -66,12 +67,19 @@ class ConvModel(nn.Module):
 
 
 class DistributionConvPostProcessing(nn.Module):
-    def __init__(self, conv_model, regularization=1e-9):
+    def __init__(self, conv_model, regularization=1e-9, debias=False):
         super().__init__()
         self.conv_model = conv_model
         self.regularization = regularization
+        self.debias = debias
+
+        if debias:
+            self.debias_model = ModelParameterBiasCorrection()
 
     def forward(self, batch):
+        if self.debias:
+            batch = self.debias_model(batch)
+
         x = batch["features_features"]
 
         x = x[..., 0, :]  # Grab the first member.

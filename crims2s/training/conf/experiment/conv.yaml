@@ -10,3 +10,5 @@ early_stopping:
   patience: 10
 
 batch_size: 4
+
+optimizer.weight_decay: 1e-6
