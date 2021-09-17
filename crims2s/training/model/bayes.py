@@ -88,8 +88,17 @@ class ConvolutionalWeightModel(nn.Module):
 
     def forward(self, example):
         # Dims of example: week, lead time, lat, lon, realization, dim.
-        x = example[:, :, :, :, 0, :]  # Grab the first member.
+        print("example", example.shape)
+
+        x = example[..., 0, :]  # Grab the first member.
+
+        if len(x.shape) == 4:
+            # If there are no batches, simulate it by adding a batch dim.
+            x = x.unsqueeze(dim=0)
+
         x = torch.transpose(x, 1, -1)  # Swap dims and depth.
+
+        print("x", x.shape)
 
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
