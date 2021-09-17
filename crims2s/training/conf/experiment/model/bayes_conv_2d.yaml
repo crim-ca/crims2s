@@ -16,7 +16,7 @@ t2m_weight_model:
     - 1
 tp_weight_model:
   _target_: crims2s.training.model.bayes.ConvolutionalWeightModel
-  in_features: 14
+  in_features: ${experiment.model.t2m_weight_model.in_features}
   embedding_size: ${experiment.model.t2m_weight_model.embedding_size}
   kernel_size:
     - 5

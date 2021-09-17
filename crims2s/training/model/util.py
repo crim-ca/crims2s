@@ -60,8 +60,13 @@ def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0)
 
 
 def edges_cdf_to_terciles(edges_cdf):
+    if len(edges_cdf.shape) == 5:
+        stack_dim = 1
+    else:
+        stack_dim = 0
+
     return torch.stack(
-        [edges_cdf[0], edges_cdf[1] - edges_cdf[0], 1.0 - edges_cdf[1],], dim=0
+        [edges_cdf[0], edges_cdf[1] - edges_cdf[0], 1.0 - edges_cdf[1],], dim=stack_dim
     )
 
 
@@ -89,7 +94,15 @@ class DistributionModelAdapter(nn.Module):
     def forward(self, example):
         t2m_dist, tp_dist = self.model(example)
 
-        t2m_terciles = self.t2m_to_terciles(t2m_dist, example["edges_t2m"])
-        tp_terciles = self.tp_to_terciles(tp_dist, example["edges_tp"])
+        edges_t2m = example["edges_t2m"]
+        edges_tp = example["edges_tp"]
+
+        if len(edges_t2m.shape) == 5:
+            """There is a batch dim but we need the egdges dim on the first dim."""
+            edges_t2m = torch.transpose(edges_t2m, 0, 1)
+            edges_tp = torch.transpose(edges_tp, 0, 1)
+
+        t2m_terciles = self.t2m_to_terciles(t2m_dist, edges_t2m)
+        tp_terciles = self.tp_to_terciles(tp_dist, edges_tp)
 
         return t2m_terciles, tp_terciles

@@ -79,13 +79,16 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=None,
+        batch_size=cfg.batch_size,
         batch_sampler=None,
         num_workers=num_workers,
         shuffle=True,
     )
     val_dataloader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=None, batch_sampler=None, num_workers=num_workers,
+        val_dataset,
+        batch_size=cfg.batch_size,
+        batch_sampler=None,
+        num_workers=num_workers,
     )
 
     model = hydra.utils.instantiate(cfg.model)

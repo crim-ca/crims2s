@@ -3,6 +3,7 @@ is normalization of the fields before sending them to a neural net.
 
 See notebook distributions-of-parameters.ipynb"""
 
+import numpy as np
 import torch
 import xarray as xr
 
@@ -97,7 +98,7 @@ class AddBiweeklyDimTransform:
     def __call__(self, example):
         new_example = {}
         for k in example:
-            if k in ["model", "obs", "features"]:
+            if k in ["model", "obs"]:
                 new_example[k] = add_biweekly_dim(example[k], weeks_12=self.weeks_12)
             else:
                 new_example[k] = example[k]
@@ -115,6 +116,7 @@ class AddMetadata:
         example["monthday"] = f"{month:02}{day:02}"
 
         example["latitude"] = model.latitude
+        example["longitude"] = model.longitude
 
         return example
 
@@ -153,7 +155,8 @@ class ExampleToPytorch:
         for k in ["monthday"]:
             pytorch_example[k] = example[k]
 
-        pytorch_example["latitude"] = torch.from_numpy(example["latitude"].data)
+        for k in ["latitude", "longitude"]:
+            pytorch_example[k] = torch.from_numpy(example[k].data)
 
         return pytorch_example
 
@@ -228,5 +231,31 @@ class CubeRootTP:
     def __call__(self, example):
         for k in ["obs_tp", "edges_tp"]:
             example[k] = example[k] ** (1.0 / 3.0)
+
+        return example
+
+
+class AddLatLonFeature:
+    def __init__(self):
+        pass
+
+    def __call__(self, example):
+        features = example["features_features"]
+        lat = example["latitude"]
+        lon = example["longitude"]
+
+        lat_feature = torch.zeros(121, 240)
+        lat_feature[:, :] = (lat / lat.max()).unsqueeze(dim=-1)
+
+        lon_feature = torch.zeros(121, 240)
+        lon_feature[:] = torch.sin((lon / 360.0) * 2.0 * np.pi)
+
+        lat_lon_features = torch.stack([lat_feature, lon_feature], dim=-1).unsqueeze(-2)
+
+        lat_lon_features_weekly = torch.zeros_like(features[..., :2])
+        lat_lon_features_weekly[:, :] = lat_lon_features
+
+        new_feature = torch.cat([features, lat_lon_features_weekly], dim=-1)
+        example["features_features"] = new_feature
 
         return example

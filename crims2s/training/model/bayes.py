@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .bias import ModelParameterBiasCorrection
 from .emos import NormalCubeNormalMultiplexedEMOS
 from .util import DistributionToTerciles
 
@@ -109,8 +110,8 @@ class BayesianUpdateModel(nn.Module):
         forecast_model,
         t2m_weight_model,
         tp_weight_model,
-        min_model_weight=0.0,
         weight_model_factor=1.0,
+        bias_correction=False,
     ):
         super().__init__()
         self.forecast_model = forecast_model
@@ -118,8 +119,12 @@ class BayesianUpdateModel(nn.Module):
         self.tp_weight_model = tp_weight_model
         self.t2m_to_terciles = DistributionToTerciles()
         self.tp_to_terciles = DistributionToTerciles()
-        self.min_model_weight = min_model_weight
         self.weight_model_factor = weight_model_factor
+
+        if bias_correction:
+            self.bias_correction_model = ModelParameterBiasCorrection()
+        else:
+            self.bias_correction_model = None
 
     def make_weights(self, weight_model, features, nan_mask):
         weights_from_model = self.weight_model_factor * weight_model(features)
@@ -127,8 +132,6 @@ class BayesianUpdateModel(nn.Module):
         raw_update_weights = torch.where(
             nan_mask, torch.zeros_like(weights_from_model), weights_from_model,
         )
-
-        # raw_update_weights = torch.clamp(raw_update_weights, min=self.min_model_weight)
 
         raw_prior_weights = torch.full_like(raw_update_weights, 0.0)
 
@@ -138,6 +141,9 @@ class BayesianUpdateModel(nn.Module):
         return weights
 
     def forward(self, example):
+        if self.bias_correction_model is not None:
+            example = self.bias_correction_model(example)
+
         t2m_dist, tp_dist = self.forecast_model(example)
 
         t2m_terciles = self.t2m_to_terciles(t2m_dist, example["edges_t2m"])

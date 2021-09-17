@@ -7,3 +7,6 @@ defaults:
 
 dataset:
   include_features: False
+batch_size: 
+trainer:
+  accumulate_grad_batches: 4

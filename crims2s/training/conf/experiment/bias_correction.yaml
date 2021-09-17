@@ -15,3 +15,8 @@ optimizer:
 
 scheduler:
   patience: 3
+
+batch_size: 
+
+trainer:
+  accumulate_grad_batches: 4

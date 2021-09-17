@@ -26,7 +26,6 @@ experiment:
     accelerator: auto
     devices: 1
     max_epochs: 100
-    accumulate_grad_batches: 4
 
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 lr_find: False

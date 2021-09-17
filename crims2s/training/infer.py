@@ -87,8 +87,6 @@ def find_checkpoint_file(checkpoint_dir):
     checkpoint_dir = pathlib.Path(checkpoint_dir)
     checkpoint_files = sorted(list(checkpoint_dir.rglob("*.ckpt")))
 
-    print(checkpoint_files)
-
     return checkpoint_files[-1]
 
 
