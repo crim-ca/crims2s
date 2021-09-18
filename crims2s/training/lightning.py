@@ -26,11 +26,10 @@ def rps(pred, target, dim=0):
 class S2SDistributionModule(pl.LightningModule):
     # We specify default values for model and optimizer even though it doesn't make sense.
     # We do this so that the module can be brought back to life with load_from_checkpoint.
-    def __init__(self, model=None, optimizer=None, scheduler=None):
+    def __init__(self, model=None, optimizer=None):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
-        self.scheduler = scheduler
         self.t2m_to_terciles = DistributionToTerciles()
         self.tp_to_terciles = DistributionToTerciles()
 
@@ -144,17 +143,7 @@ class S2SDistributionModule(pl.LightningModule):
         return {}
 
     def configure_optimizers(self):
-        return_dict = {
-            "optimizer": self.optimizer,
-        }
-
-        if self.scheduler is not None:
-            return_dict["lr_scheduler"] = {
-                "scheduler": self.scheduler,
-                "monitor": "val_loss",
-            }
-
-        return return_dict
+        return self.optimizer
 
 
 class S2STercilesModule(pl.LightningModule):
@@ -181,7 +170,7 @@ class S2STercilesModule(pl.LightningModule):
     def forward(self, x):
         return self.model(x)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
         t2m_terciles, tp_terciles = self.forward(batch)
 
         loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
@@ -310,17 +299,7 @@ class S2STercilesModule(pl.LightningModule):
         return rpss[~rpss_nan_mask & ~weight_zero].mean()
 
     def configure_optimizers(self):
-        return_dict = {
-            "optimizer": self.optimizer,
-        }
-
-        if self.scheduler is not None:
-            return_dict["lr_scheduler"] = {
-                "scheduler": self.scheduler,
-                "monitor": "val_loss",
-            }
-
-        return return_dict
+        return self.optimizer
 
 
 class S2SBayesModelModule(S2STercilesModule):

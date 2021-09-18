@@ -81,12 +81,9 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
     model = hydra.utils.instantiate(cfg.model)
     optimizer = hydra.utils.call(cfg.optimizer, model)
 
-    if "scheduler" in cfg:
-        scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer)
-    else:
-        scheduler = None
+    print("optimizer", optimizer)
 
-    lightning_module = hydra.utils.instantiate(cfg.module, model, optimizer, scheduler)
+    lightning_module = hydra.utils.instantiate(cfg.module, model, optimizer)
     tensorboard = loggers.TensorBoardLogger("./tensorboard", default_hp_metric=False)
 
     mlflow = loggers.MLFlowLogger(

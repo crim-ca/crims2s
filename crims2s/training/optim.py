@@ -1,5 +1,6 @@
-from crims2s.training.model.emos import TempPrecipEMOS
 import torch
+
+from collections.abc import Mapping, Iterable
 
 
 def bayes_optimizer(model, cls, forecast_lr, weights_lr, **kwargs):

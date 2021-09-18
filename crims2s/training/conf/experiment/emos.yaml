@@ -2,7 +2,7 @@ defaults:
 - dataset: lean
 - module: tercile
 - model: emos_normalcubenormal
-- optimizer: adam_emos
+- optimizer: spec_emos
 - transform: emos_cube
 
 dataset:
@@ -10,3 +10,6 @@ dataset:
 batch_size: 16
 trainer:
   accumulate_grad_batches: 1
+
+early_stopping:
+  patience: 5
