@@ -1,5 +1,5 @@
 defaults:
-  - experiment: bayes_conv_lean
+  - experiment: bayes_conv
 
 hydra:
   job:

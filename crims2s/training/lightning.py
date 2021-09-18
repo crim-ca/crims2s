@@ -225,26 +225,42 @@ class S2STercilesModule(pl.LightningModule):
         return {}
 
     def make_weight_mask(self, batch, use_dry_mask=False):
-        dry_mask = batch["dry_mask_tp"]
-        weight_mask = torch.ones(121, 240, device=dry_mask.device)
+        weight_mask = torch.ones(121, 240, device=batch["obs_t2m"].device)
 
         latitude = batch["latitude"]
-        if len(latitude.shape) == 2:
-            latitude = latitude[0]
-            dry_mask = dry_mask[0]
-
-        latitude_mask = latitude < -60.0
-        weight_mask[..., latitude_mask, :] = 0.0
 
         if self.reweight_by_area:
-            lat_weights = torch.cos(torch.deg2rad(torch.abs(latitude)))
-            lat_weights = lat_weights / lat_weights.max()
-            weight_mask *= lat_weights.unsqueeze(-1)
+            if len(latitude.shape) == 2:
+                latitude = latitude[0]
+            lat_weights = self.make_lat_weights(latitude)
+            weight_mask *= lat_weights
 
         if use_dry_mask:
-            weight_mask[dry_mask] = 0.0
+            dry_mask = batch["dry_mask_tp"]
+
+            if len(latitude.shape) == 2:
+                dry_mask = dry_mask[0]
+            dry_weights = self.make_dry_weights(dry_mask)
+            weight_mask *= dry_weights
 
         return weight_mask
+
+    def make_lat_weights(self, latitude):
+        lat_weights = torch.ones(121, 240, device=latitude.device)
+        lat_mask = latitude <= -60.0
+        lat_weights[lat_mask, :] = 0.0
+
+        area_by_lat = torch.cos(torch.deg2rad(torch.abs(latitude))).unsqueeze(-1)
+
+        lat_weights *= area_by_lat
+
+        return lat_weights
+
+    def make_dry_weights(self, dry_mask):
+        dry_weights = torch.ones(121, 240, device=dry_mask.device, dtype=float)
+        dry_weights[dry_mask] = 0.0
+
+        return dry_weights
 
     def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
         t2m_weight_mask = self.make_weight_mask(batch)
@@ -280,7 +296,6 @@ class S2STercilesModule(pl.LightningModule):
 
         model_rps = self.compute_rps(model, target)
         climatology_rps = self.compute_rps(climatology, target)
-
 
         aggregated_model_rps = model_rps.mean(dim=-3)
         aggregated_climatology_rps = climatology_rps.mean(dim=-3)

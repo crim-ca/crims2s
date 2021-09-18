@@ -116,6 +116,7 @@ class AddMetadata:
         month = int(model.forecast_time.dt.month)
         day = int(model.forecast_time.dt.day)
         example["monthday"] = f"{month:02}{day:02}"
+        example["month"] = f"{month:02}"
 
         example["latitude"] = model.latitude
         example["longitude"] = model.longitude
@@ -154,7 +155,7 @@ class ExampleToPytorch:
                         dataset[variable].data
                     )
 
-        for k in ["monthday"]:
+        for k in ["monthday", "month"]:
             pytorch_example[k] = example[k]
 
         for k in ["latitude", "longitude"]:

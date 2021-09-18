@@ -8,6 +8,6 @@ model:
     biweekly: True
   tp_model:
     _target_: crims2s.training.model.WeeklyNormalEMOSModel
-    loc_key: model_parameters_tp_mu
-    scale_key: model_parameters_tp_sigma
+    loc_key: model_parameters_tp_cube_root_mu
+    scale_key: model_parameters_tp_cube_root_sigma
     biweekly: ${experiment.model.model.t2m_model.biweekly}

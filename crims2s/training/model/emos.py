@@ -1,22 +1,9 @@
 import torch
 import torch.nn as nn
 
-from .util import ModelMultiplexer
+from .util import ModelMultiplexer, PytorchMultiplexer, WeeklyModel
 from ...distribution import Gamma
 from ...util import ECMWF_FORECASTS
-
-
-__all__ = [
-    "NormalGammaEMOS",
-    "NormalNormalEMOS",
-    "NormalCubeNormalEMOS",
-    "NormalNormalMonthlyEMOS",
-    "NormalGammaMonthlyEMOS",
-    "NormalCubeNormalMonthlyEMOS",
-    "NormalNormalMultiplexedEMOS",
-    "NormalGammaMultiplexedEMOS",
-    "NormalCubeNormalMultiplexedEMOS",
-]
 
 
 class LinearModel(nn.Module):
@@ -34,7 +21,7 @@ class LinearModel(nn.Module):
 
 
 class NormalEMOSModel(nn.Module):
-    def __init__(self, mu_key, sigma_key, biweekly=False):
+    def __init__(self, biweekly=False, regularization=1e-9):
         super().__init__()
 
         shape = (2, 121, 240) if biweekly else (121, 240)
@@ -42,15 +29,9 @@ class NormalEMOSModel(nn.Module):
         self.mu_model = LinearModel(*shape)
         self.sigma_model = LinearModel(*shape, fill_intercept=1.0)
 
-        self.mu_key = mu_key
-        self.sigma_key = sigma_key
+        self.regularization = regularization
 
-    def forward(self, example):
-        forecast_mu, forecast_sigma = (
-            example[self.mu_key],
-            example[self.sigma_key],
-        )
-
+    def forward(self, forecast_mu, forecast_sigma):
         mu = self.mu_model(forecast_mu)
 
         sigma = self.sigma_model(forecast_sigma)
@@ -60,7 +41,7 @@ class NormalEMOSModel(nn.Module):
 
 
 class GammaEMOSModel(nn.Module):
-    def __init__(self, alpha_key, beta_key, biweekly=False, regularization=1e-9):
+    def __init__(self, biweekly=False, regularization=1e-9):
         super().__init__()
 
         shape = (2, 121, 240) if biweekly else (121, 240)
@@ -70,15 +51,7 @@ class GammaEMOSModel(nn.Module):
         self.alpha_model = LinearModel(*shape)
         self.beta_model = LinearModel(*shape, fill_intercept=1.0)
 
-        self.alpha_key = alpha_key
-        self.beta_key = beta_key
-
-    def forward(self, example):
-        forecast_alpha, forecast_beta = (
-            example[self.alpha_key],
-            example[self.beta_key],
-        )
-
+    def forward(self, forecast_alpha, forecast_beta):
         alpha = self.alpha_model(forecast_alpha)
         alpha = torch.clip(alpha, min=self.regularization)
 
@@ -95,7 +68,9 @@ class TempPrecipEMOS(nn.Module):
     Args:
         biweekly: If True, train a separate model for every 2 weeks period."""
 
-    def __init__(self, t2m_model, tp_model):
+    def __init__(
+        self, t2m_model, tp_model,
+    ):
         super().__init__()
 
         self.t2m_model = t2m_model
@@ -109,83 +84,140 @@ class TempPrecipEMOS(nn.Module):
 
 
 class NormalNormalEMOS(TempPrecipEMOS):
-    def __init__(self, biweekly=False):
-        t2m_model = NormalEMOSModel(
-            "model_parameters_t2m_mu", "model_parameters_t2m_sigma", biweekly=biweekly
+    def __init__(self, biweekly=False, regularization=1e-9):
+        t2m_model = MonthlyNormalEMOSModel(
+            "model_parameters_t2m_mu",
+            "model_parameters_t2m_sigma",
+            biweekly=biweekly,
+            regularization=regularization,
         )
-        tp_model = NormalEMOSModel(
-            "model_parameters_tp_mu", "model_parameters_tp_sigma", biweekly=biweekly
+        tp_model = WeeklyNormalEMOSModel(
+            "model_parameters_tp_mu",
+            "model_parameters_tp_sigma",
+            biweekly=biweekly,
+            regularization=regularization,
         )
 
-        super().__init__(t2m_model, tp_model)
+        super().__init__(
+            t2m_model, tp_model,
+        )
+
+
+class NormalCubeNormalEMOS(TempPrecipEMOS):
+    def __init__(self, biweekly=False, regularization=1e-9):
+        t2m_model = MonthlyNormalEMOSModel(
+            "model_parameters_t2m_mu",
+            "model_parameters_t2m_sigma",
+            biweekly=biweekly,
+            regularization=regularization,
+        )
+        tp_model = WeeklyNormalEMOSModel(
+            "model_parameters_tp_cube_root_mu",
+            "model_parameters_tp_cube_root_sigma",
+            biweekly=biweekly,
+            regularization=regularization,
+        )
+
+        super().__init__(
+            t2m_model, tp_model,
+        )
 
 
 class NormalCubeNormalEMOS(TempPrecipEMOS):
     def __init__(self, biweekly=False):
-        t2m_model = NormalEMOSModel(
-            "model_parameters_t2m_mu", "model_parameters_t2m_sigma", biweekly=biweekly
+        t2m_model = NormalEMOSModel(biweekly=biweekly)
+        tp_model = NormalEMOSModel(biweekly=biweekly,)
+
+        super().__init__(
+            t2m_model,
+            tp_model,
+            tp_loc_key="model_parameters_tp_cube_root_mu",
+            tp_scale_key="model_parameters_tp_cube_root_sigma",
         )
-        tp_model = NormalEMOSModel(
-            "model_parameters_tp_cube_root_mu",
-            "model_parameters_tp_cube_root_sigma",
-            biweekly=biweekly,
-        )
-
-        super().__init__(t2m_model, tp_model)
 
 
-class NormalGammaEMOS(TempPrecipEMOS):
-    def __init__(self, biweekly=False):
-        t2m_model = NormalEMOSModel(
-            "model_parameters_t2m_mu", "model_parameters_t2m_sigma", biweekly=biweekly
-        )
-        tp_model = GammaEMOSModel(
-            "model_parameters_tp_alpha", "model_parameters_tp_beta", biweekly=biweekly
-        )
-        super().__init__(t2m_model, tp_model)
+class MonthlyMultiplexer(PytorchMultiplexer):
+    def __init__(self, cls, *args, **kwargs):
+        monthly_models = {f"{month:02}": cls(*args, **kwargs) for month in range(1, 13)}
+
+        super().__init__("month", monthly_models)
 
 
-class MultiplexedEMOSModel(ModelMultiplexer):
-    """A collection of EMOS models: one for each forecast that ECMWF does each year."""
-
-    def __init__(self, forecast_model, biweekly=False):
+class WeeklyMultiplexer(PytorchMultiplexer):
+    def __init__(self, cls, *args, **kwargs):
         monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
-        weekly_models = {
-            monthday: forecast_model(biweekly=biweekly) for monthday in monthdays
-        }
+        weekly_models = {monthday: cls(*args, **kwargs) for monthday in monthdays}
 
         super().__init__("monthday", weekly_models)
 
 
-class NormalGammaMultiplexedEMOS(MultiplexedEMOSModel):
-    def __init__(self, biweekly=False):
-        super().__init__(NormalGammaEMOS, biweekly=biweekly)
+class MonthlyLinearModel(MonthlyMultiplexer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(LinearModel, *args, **kwargs)
 
 
-class NormalNormalMultiplexedEMOS(MultiplexedEMOSModel):
-    def __init__(self, biweekly=False):
-        super().__init__(NormalNormalEMOS, biweekly=biweekly)
+class WeeklyLinearModel(WeeklyMultiplexer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(LinearModel, *args, **kwargs)
 
 
-class NormalCubeNormalMultiplexedEMOS(MultiplexedEMOSModel):
-    def __init__(self, biweekly=False):
-        super().__init__(NormalCubeNormalEMOS, biweekly=biweekly)
+class MultiplexedNormalEMOSModel(nn.Module):
+    """EMOS model that supports multiplexed linear models."""
+
+    def __init__(
+        self,
+        loc_key,
+        scale_key,
+        linear_model_cls,
+        key,
+        biweekly=False,
+        regularization=1e-9,
+    ):
+        super().__init__()
+
+        self.loc_key = loc_key
+        self.scale_key = scale_key
+
+        shape = (2, 121, 240) if biweekly else (121, 240)
+
+        self.loc_model = linear_model_cls(*shape)
+        self.scale_model = linear_model_cls(*shape, fill_intercept=1.0)
+
+        self.regularization = regularization
+
+        self.key = key
+
+    def forward(self, batch):
+        forecast_loc, forecast_scale = batch[self.loc_key], batch[self.scale_key]
+        key = batch[self.key]
+
+        loc = self.loc_model(key, forecast_loc)
+
+        scale = self.scale_model(key, forecast_scale)
+        scale = torch.clip(forecast_scale, min=self.regularization)
+
+        return torch.distributions.Normal(loc=loc, scale=scale)
 
 
-class NormalGammaMonthlyEMOS(ModelMultiplexer):
-    MODEL = NormalGammaEMOS
-
-    def __init__(self, biweekly=False):
-        monthly_models = {
-            f"{month:02}": self.MODEL(biweekly=biweekly) for month in range(1, 13)
-        }
-
-        super().__init__(lambda x: x["monthday"][:2], monthly_models)
-
-
-class NormalNormalMonthlyEMOS(NormalGammaMonthlyEMOS):
-    MODEL = NormalNormalEMOS
+class MonthlyNormalEMOSModel(MultiplexedNormalEMOSModel):
+    def __init__(self, loc_key, scale_key, biweekly=False, regularization=1e-9):
+        super().__init__(
+            loc_key,
+            scale_key,
+            MonthlyLinearModel,
+            "month",
+            biweekly=biweekly,
+            regularization=regularization,
+        )
 
 
-class NormalCubeNormalMonthlyEMOS(NormalGammaMonthlyEMOS):
-    MODEL = NormalCubeNormalEMOS
+class WeeklyNormalEMOSModel(MultiplexedNormalEMOSModel):
+    def __init__(self, loc_key, scale_key, biweekly=False, regularization=1e-9):
+        super().__init__(
+            loc_key,
+            scale_key,
+            WeeklyLinearModel,
+            "monthday",
+            biweekly=biweekly,
+            regularization=regularization,
+        )
