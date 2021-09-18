@@ -27,7 +27,7 @@ class NormalEMOSModel(nn.Module):
         shape = (2, 121, 240) if biweekly else (121, 240)
 
         self.mu_model = LinearModel(*shape)
-        self.sigma_model = LinearModel(*shape, fill_intercept=1.0)
+        self.sigma_model = LinearModel(*shape, fill_weights=1.2)
 
         self.regularization = regularization
 
@@ -123,19 +123,6 @@ class NormalCubeNormalEMOS(TempPrecipEMOS):
         )
 
 
-class NormalCubeNormalEMOS(TempPrecipEMOS):
-    def __init__(self, biweekly=False):
-        t2m_model = NormalEMOSModel(biweekly=biweekly)
-        tp_model = NormalEMOSModel(biweekly=biweekly,)
-
-        super().__init__(
-            t2m_model,
-            tp_model,
-            tp_loc_key="model_parameters_tp_cube_root_mu",
-            tp_scale_key="model_parameters_tp_cube_root_sigma",
-        )
-
-
 class MonthlyMultiplexer(PytorchMultiplexer):
     def __init__(self, cls, *args, **kwargs):
         monthly_models = {f"{month:02}": cls(*args, **kwargs) for month in range(1, 13)}
@@ -181,7 +168,7 @@ class MultiplexedNormalEMOSModel(nn.Module):
         shape = (2, 121, 240) if biweekly else (121, 240)
 
         self.loc_model = linear_model_cls(*shape)
-        self.scale_model = linear_model_cls(*shape, fill_intercept=1.0)
+        self.scale_model = linear_model_cls(*shape, fill_weights=1.2)
 
         self.regularization = regularization
 
@@ -192,9 +179,8 @@ class MultiplexedNormalEMOSModel(nn.Module):
         key = batch[self.key]
 
         loc = self.loc_model(key, forecast_loc)
-
         scale = self.scale_model(key, forecast_scale)
-        scale = torch.clip(forecast_scale, min=self.regularization)
+        scale = torch.clip(scale, min=self.regularization)
 
         return torch.distributions.Normal(loc=loc, scale=scale)
 

@@ -2,7 +2,7 @@ defaults:
 - dataset: lean
 - module: tercile
 - model: emos_normalcubenormal
-- optimizer: adam
+- optimizer: adam_emos
 - transform: emos_cube
 
 dataset:

@@ -192,6 +192,20 @@ class S2STercilesModule(pl.LightningModule):
 
         return loss
 
+    def validation_step(self, batch, batch_id):
+        t2m_terciles, tp_terciles = self.forward(batch)
+
+        fields_loss = self.compute_fields_loss(
+            batch, t2m_terciles, tp_terciles, label="Val"
+        )
+
+        self.log("val_loss", fields_loss, logger=False, on_step=False, on_epoch=True)
+        self.log("Loss_Epoch/All/Val", fields_loss, on_epoch=True, on_step=False)
+
+        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Val")
+
+        return {}
+
     def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
         t2m_weight_mask = self.make_weight_mask(batch)
         tp_weight_mask = self.make_weight_mask(
@@ -209,20 +223,6 @@ class S2STercilesModule(pl.LightningModule):
         self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
         self.log(f"RPSS_Epoch/T2M/{label}", rpss_t2m, on_epoch=True, on_step=False)
         self.log(f"RPSS_Epoch/TP/{label}", rpss_tp, on_epoch=True, on_step=False)
-
-    def validation_step(self, batch, batch_id):
-        t2m_terciles, tp_terciles = self.forward(batch)
-
-        fields_loss = self.compute_fields_loss(
-            batch, t2m_terciles, tp_terciles, label="Val"
-        )
-
-        self.log("val_loss", fields_loss, logger=False, on_step=False, on_epoch=True)
-        self.log("Loss_Epoch/All/Val", fields_loss, on_epoch=True, on_step=False)
-
-        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Val")
-
-        return {}
 
     def make_weight_mask(self, batch, use_dry_mask=False):
         weight_mask = torch.ones(121, 240, device=batch["obs_t2m"].device)
