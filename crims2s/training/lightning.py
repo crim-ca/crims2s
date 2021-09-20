@@ -153,17 +153,11 @@ class S2STercilesModule(pl.LightningModule):
     # We specify default values for model and optimizer even though it doesn't make sense.
     # We do this so that the module can be brought back to life with load_from_checkpoint.
     def __init__(
-        self,
-        model=None,
-        optimizer=None,
-        scheduler=None,
-        reweight_by_area=True,
-        ignore_dry_tiles=False,
+        self, model=None, optimizer=None, reweight_by_area=True, ignore_dry_tiles=False,
     ):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
-        self.scheduler = scheduler
         self.reweight_by_area = reweight_by_area
         self.ignore_dry_tiles = ignore_dry_tiles
 
@@ -196,22 +190,23 @@ class S2STercilesModule(pl.LightningModule):
         return {}
 
     def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
-        t2m_weight_mask = self.make_weight_mask(batch)
-        tp_weight_mask = self.make_weight_mask(
-            batch, use_dry_mask=self.ignore_dry_tiles
-        )
+        with torch.no_grad():
+            t2m_weight_mask = self.make_weight_mask(batch)
+            tp_weight_mask = self.make_weight_mask(
+                batch, use_dry_mask=self.ignore_dry_tiles
+            )
 
-        rpss_t2m = self.compute_rpss(
-            batch, t2m_terciles, batch["terciles_t2m"], t2m_weight_mask
-        )
-        rpss_tp = self.compute_rpss(
-            batch, tp_terciles, batch["terciles_tp"], tp_weight_mask
-        )
+            rpss_t2m = self.compute_rpss(
+                batch, t2m_terciles, batch["terciles_t2m"], t2m_weight_mask
+            )
+            rpss_tp = self.compute_rpss(
+                batch, tp_terciles, batch["terciles_tp"], tp_weight_mask
+            )
 
-        rpss = rpss_t2m + rpss_tp
-        self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
-        self.log(f"RPSS_Epoch/T2M/{label}", rpss_t2m, on_epoch=True, on_step=False)
-        self.log(f"RPSS_Epoch/TP/{label}", rpss_tp, on_epoch=True, on_step=False)
+            rpss = rpss_t2m + rpss_tp
+            self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
+            self.log(f"RPSS_Epoch/T2M/{label}", rpss_t2m, on_epoch=True, on_step=False)
+            self.log(f"RPSS_Epoch/TP/{label}", rpss_tp, on_epoch=True, on_step=False)
 
     def make_weight_mask(self, batch, use_dry_mask=False):
         weight_mask = torch.ones(121, 240, device=batch["obs_t2m"].device)
@@ -251,7 +246,9 @@ class S2STercilesModule(pl.LightningModule):
 
         return dry_weights
 
-    def compute_fields_loss(self, batch, t2m_terciles, tp_terciles, label="Train"):
+    def compute_fields_loss(
+        self, batch, t2m_terciles, tp_terciles, label="Train", model=""
+    ):
         t2m_weight_mask = self.make_weight_mask(batch)
         tp_weight_mask = self.make_weight_mask(
             batch, use_dry_mask=self.ignore_dry_tiles
@@ -265,9 +262,9 @@ class S2STercilesModule(pl.LightningModule):
 
         loss = t2m_rps + tp_rps
 
-        self.log(f"RPS_Epoch/All/{label}", loss, on_epoch=True, on_step=False)
-        self.log(f"RPS_Epoch/T2M/{label}", t2m_rps, on_epoch=True, on_step=False)
-        self.log(f"RPS_Epoch/TP/{label}", tp_rps, on_epoch=True, on_step=False)
+        self.log(f"RPS_Epoch{model}/All/{label}", loss, on_epoch=True, on_step=False)
+        self.log(f"RPS_Epoch{model}/T2M/{label}", t2m_rps, on_epoch=True, on_step=False)
+        self.log(f"RPS_Epoch{model}/TP/{label}", tp_rps, on_epoch=True, on_step=False)
 
         return loss
 
@@ -307,12 +304,11 @@ class S2SBayesModelModule(S2STercilesModule):
         self,
         model: BayesianUpdateModel,
         optimizer,
-        scheduler,
         regularization: float,
         model_only_epochs=0,
         **kwargs,
     ):
-        super().__init__(model, optimizer, scheduler, **kwargs)
+        super().__init__(model, optimizer, **kwargs)
         self.regularization = regularization
         self.model_only_epochs = model_only_epochs
 
@@ -331,14 +327,26 @@ class S2SBayesModelModule(S2STercilesModule):
             for p in self.model.tp_weight_model.parameters():
                 p.requires_grad = True
 
-    def training_step(self, batch, batch_idx):
-        t2m_terciles, tp_terciles, t2m_prior_weights, tp_prior_weights = self.forward(
-            batch
-        )
+    def training_step(self, batch, batch_idx, optimizer_idx=None):
+        (
+            t2m_terciles,
+            tp_terciles,
+            t2m_prior_weights,
+            tp_prior_weights,
+            t2m_no_weights,
+            tp_no_weights,
+        ) = self.forward(batch)
+
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
         reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
 
         loss = fields_loss + reg_loss
+
+        with torch.no_grad():
+            # Log EMOS only errors for scheduling purposes.
+            _ = self.compute_fields_loss(
+                batch, t2m_no_weights, tp_no_weights, model="EMOS"
+            )
 
         self.log("Loss_Epoch/All/Train", loss, on_epoch=True, on_step=False)
         self.log("Loss_Step/All/Train", loss, on_epoch=False, on_step=True)
@@ -390,8 +398,17 @@ class S2SBayesModelModule(S2STercilesModule):
         return reg_loss
 
     def validation_step(self, batch, batch_id):
-        t2m_terciles, tp_terciles, t2m_prior_weights, tp_prior_weights = self.forward(
-            batch
+        (
+            t2m_terciles,
+            tp_terciles,
+            t2m_prior_weights,
+            tp_prior_weights,
+            t2m_no_weights,
+            tp_no_weights,
+        ) = self.forward(batch)
+
+        _ = self.compute_fields_loss(
+            batch, t2m_no_weights, tp_no_weights, model="EMOS", label="Val"
         )
 
         fields_loss = self.compute_fields_loss(

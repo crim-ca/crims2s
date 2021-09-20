@@ -55,9 +55,18 @@ class LinearWeightModel(nn.Module):
 
 class ConvolutionalWeightModel(nn.Module):
     def __init__(
-        self, in_features, kernel_size=(5, 5, 2), padding=(2, 2, 0), embedding_size=128
+        self,
+        in_features,
+        kernel_size=(5, 5, 2),
+        padding=(2, 2, 0),
+        embedding_size=128,
+        moments=False,
     ):
         super().__init__()
+
+        self.moments = moments
+
+        in_features = 2 * in_features if moments else in_features
 
         self.conv1 = nn.Conv3d(
             in_features,
@@ -83,13 +92,18 @@ class ConvolutionalWeightModel(nn.Module):
             padding=padding,
         )
 
-        self.lin = nn.Linear(embedding_size, 1)
+        self.lin = nn.Linear(embedding_size, 2)
 
     def forward(self, example):
-        # Dims of example: week, lead time, lat, lon, realization, dim.
-        print("example", example.shape)
+        # Dims of example: batch, week, lead time, lat, lon, realization, dim.
 
-        x = example[..., 0, :]  # Grab the first member.
+        # Compute mean and std of features across members.
+        if self.moments:
+            # Use average and STD of members as features.
+            x = torch.cat([example.mean(dim=-2), example.std(dim=-2)], dim=-1)
+        else:
+            # Select first member.
+            x = example[..., 0, :]
 
         if len(x.shape) == 4:
             # If there are no batches, simulate it by adding a batch dim.
@@ -97,17 +111,18 @@ class ConvolutionalWeightModel(nn.Module):
 
         x = torch.transpose(x, 1, -1)  # Swap dims and depth.
 
-        print("x", x.shape)
-
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
+
         x = x.mean(dim=-1)
 
         x = torch.transpose(
             torch.transpose(x, 1, -1), 1, 2
         )  # Bring the channels back at the end.
         x = self.lin(x)
+
+        x = torch.transpose(torch.transpose(x, 2, 3), 1, 2)
 
         return x.squeeze()
 
@@ -143,8 +158,8 @@ class BayesianUpdateModel(nn.Module):
 
         raw_prior_weights = torch.full_like(raw_update_weights, 0.0)
 
-        raw_weights = torch.stack([raw_prior_weights, raw_update_weights])
-        weights = torch.softmax(raw_weights, dim=0)
+        raw_weights = torch.stack([raw_prior_weights, raw_update_weights], dim=1)
+        weights = torch.softmax(raw_weights, dim=1)
 
         return weights
 
@@ -157,11 +172,11 @@ class BayesianUpdateModel(nn.Module):
         t2m_terciles = self.t2m_to_terciles(t2m_dist, example["edges_t2m"])
         tp_terciles = self.tp_to_terciles(tp_dist, example["edges_tp"])
 
-        tp_nan_mask = tp_terciles.isnan().any(dim=0)
-        tp_terciles[:, tp_nan_mask] = 0.0
+        t2m_nan_mask = t2m_terciles.isnan().any(dim=1)
+        torch.transpose(t2m_terciles, 0, 1)[:, t2m_nan_mask] = 0.0
 
-        t2m_nan_mask = t2m_terciles.isnan().any(dim=0)
-        t2m_terciles[:, t2m_nan_mask] = 0.0
+        tp_nan_mask = tp_terciles.isnan().any(dim=1)
+        torch.transpose(tp_terciles, 0, 1)[:, tp_nan_mask] = 0.0
 
         # We use the key features features because of our conversion convention from
         # xarray to pytorch. The first features designates the features dataset. The
@@ -175,21 +190,29 @@ class BayesianUpdateModel(nn.Module):
 
         prior = torch.full_like(t2m_terciles, 1.0 / 3.0)
 
-        t2m_estimates = torch.stack([prior, t2m_terciles])
-        tp_estimates = torch.stack([prior, tp_terciles])
+        t2m_estimates = torch.stack([prior, t2m_terciles], dim=1)
+        tp_estimates = torch.stack([prior, tp_terciles], dim=1)
 
-        # Meaning of the keys: Ditribution (prior or forecast), Category, Lead time, lAtitude, lOngitude
-        t2m = torch.einsum("dclao,dlao->clao", t2m_estimates, t2m_weights)
-        tp = torch.einsum("dclao,dlao->clao", tp_estimates, tp_weights)
+        # Meaning of the keys: Batch, Ditribution (prior or forecast), Category, Lead time, lAtitude, lOngitude
+        t2m = torch.einsum("bdclao,bdlao->bclao", t2m_estimates, t2m_weights)
+        tp = torch.einsum("bdclao,bdlao->bclao", tp_estimates, tp_weights)
 
-        t2m[:, t2m_nan_mask] = np.nan
-        tp[:, tp_nan_mask] = np.nan
+        torch.transpose(t2m, 0, 1)[:, t2m_nan_mask] = np.nan
+        torch.transpose(tp, 0, 1)[:, tp_nan_mask] = np.nan
 
-        t2m_prior_weights = torch.where(
-            ~t2m_nan_mask, t2m_weights[0], torch.zeros_like(t2m_weights[0])
+        # t2m_prior_weights = torch.where(
+        #     ~t2m_nan_mask, t2m_weights[1], torch.zeros_like(t2m_weights[1])
+        # )
+        # tp_prior_weights = torch.where(
+        #     ~tp_nan_mask, tp_weights[1], torch.zeros_like(tp_weights[1])
+        # )
+
+        return (
+            t2m,
+            tp,
+            t2m_weights[:, 0][~t2m_nan_mask],
+            tp_weights[:, 0][~tp_nan_mask],
+            t2m_terciles,
+            tp_terciles,
         )
-        tp_prior_weights = torch.where(
-            ~tp_nan_mask, tp_weights[0], torch.zeros_like(tp_weights[0])
-        )
 
-        return t2m, tp, t2m_prior_weights[~t2m_nan_mask], tp_prior_weights[~tp_nan_mask]

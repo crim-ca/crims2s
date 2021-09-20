@@ -7,7 +7,7 @@ model:
     scale_key: model_parameters_t2m_sigma
     biweekly: True
   tp_model:
-    _target_: crims2s.training.model.WeeklyNormalEMOSModel
+    _target_: crims2s.training.model.MonthlyNormalEMOSModel
     loc_key: model_parameters_tp_mu
     scale_key: model_parameters_tp_sigma
     biweekly: ${experiment.model.model.t2m_model.biweekly}

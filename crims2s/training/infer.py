@@ -9,6 +9,7 @@ import tqdm
 import xarray as xr
 
 from ..dataset import S2SDataset, TransformedDataset
+from ..transform import ExampleToPytorch
 from ..util import ECMWF_FORECASTS
 from .lightning import S2SBayesModelModule, S2STercilesModule
 
@@ -100,10 +101,12 @@ def cli(cfg):
     # labels are useful) and the pytorch data (to compute the inference).
     # last_transform = transform.transforms.pop(-1)
 
-    last_transform = CompositeTransform(transform.transforms[-2:])
+    for i, t in enumerate(transform.transforms):
+        if isinstance(t, ExampleToPytorch):
+            pytorch_transform_idx = i
 
-    transform.transforms.pop(-1)
-    transform.transforms.pop(-1)
+    last_transform = CompositeTransform(transform.transforms[pytorch_transform_idx:])
+    transform.transforms = transform.transforms[:pytorch_transform_idx]
 
     years = list(range(cfg.begin, cfg.end))
 
@@ -128,9 +131,9 @@ def cli(cfg):
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_size=None,
+        batch_size=1,
         batch_sampler=None,
-        collate_fn=lambda x: x,
+        # collate_fn=lambda x: x,
         num_workers=int(cfg.num_workers),
         shuffle=False,
     )
@@ -153,6 +156,7 @@ def cli(cfg):
 
     datasets_of_examples = []
     for example in tqdm.tqdm(dataloader):
+        print(example.keys())
         example_forecast = example["obs"]
 
         pytorch_example = last_transform(example)

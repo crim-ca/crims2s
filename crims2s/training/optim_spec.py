@@ -51,7 +51,6 @@ def create_optim(model, optim_spec):
 def find_unassigned_params(model, optimizers):
     assigned_params = set()
     for opt in optimizers:
-        print(opt)
         for group in opt.param_groups:
             params = group["params"]
             for p in params:
@@ -91,11 +90,7 @@ def resolve_scheduler_spec(optimizer, _target_=None, _monitor_=None, **kwargs):
 
 
 def resolve_param_spec(model, param_spec):
-    print(param_spec)
-
     param_spec = [dict(s) for s in param_spec]
-
-    print(param_spec)
 
     regexes = [spec.pop("_regex_") for spec in param_spec]
     param_lists = make_param_lists(model, regexes)

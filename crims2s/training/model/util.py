@@ -110,6 +110,10 @@ class DistributionToTerciles(nn.Module):
         self.regularization = regularization
 
     def forward(self, distribution, edges):
+        if len(edges.shape) == 5:
+            """Edges are batched. Swap batch and edge dim so that things broadcast well."""
+            edges = torch.transpose(edges, 0, 1)
+
         edges_cdf = compute_edges_cdf_from_distribution(
             distribution, edges, self.regularization
         )

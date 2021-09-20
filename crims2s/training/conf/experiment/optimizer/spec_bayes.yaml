@@ -5,20 +5,27 @@ _recursive_: False
 _convert_: partial
 optim_spec:
   - _target_: torch.optim.Adam
+    lr: 1e-3
+    params:
+      - _regex_: (t2m|tp)_weight_model
+    scheduler:
+      _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+      _monitor_: val_loss
+  - _target_: torch.optim.Adam
     lr: 1e-4
     params:
-      - _regex_: 't2m_model'
+      - _regex_: forecast_model(.*)t2m_model
     scheduler: 
       _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
-      _monitor_: RPS_Epoch/T2M/Val
+      _monitor_: RPS_EpochEMOS/T2M/Val
       factor: 0.1
-      patience: 5
+      patience: 10
   - _target_: torch.optim.Adam
     lr: 1e-3
     params:
-      - _regex_: 'tp_model'
+      - _regex_: forecast_model(.*)tp_model
     scheduler: 
       _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
-      _monitor_: RPS_Epoch/TP/Val
+      _monitor_: RPS_EpochEMOS/TP/Val
       factor: 0.1
-      patience: 5
+      patience: 10

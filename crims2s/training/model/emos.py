@@ -1,7 +1,13 @@
 import torch
 import torch.nn as nn
+from torch.nn.modules.module import register_module_backward_hook
 
-from .util import ModelMultiplexer, PytorchMultiplexer, WeeklyModel
+from .util import (
+    DistributionModelAdapter,
+    ModelMultiplexer,
+    PytorchMultiplexer,
+    WeeklyModel,
+)
 from ...distribution import Gamma
 from ...util import ECMWF_FORECASTS
 
@@ -91,7 +97,7 @@ class NormalNormalEMOS(TempPrecipEMOS):
             biweekly=biweekly,
             regularization=regularization,
         )
-        tp_model = WeeklyNormalEMOSModel(
+        tp_model = MonthlyNormalEMOSModel(
             "model_parameters_tp_mu",
             "model_parameters_tp_sigma",
             biweekly=biweekly,
@@ -111,7 +117,7 @@ class NormalCubeNormalEMOS(TempPrecipEMOS):
             biweekly=biweekly,
             regularization=regularization,
         )
-        tp_model = WeeklyNormalEMOSModel(
+        tp_model = MonthlyNormalEMOSModel(
             "model_parameters_tp_cube_root_mu",
             "model_parameters_tp_cube_root_sigma",
             biweekly=biweekly,
