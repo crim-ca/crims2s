@@ -67,11 +67,12 @@ TEST_THRESHOLD = "2020-01-01"
 
 def collate_with_xarray(batch):
     elem = batch[0]
-
     if isinstance(elem, (xr.DataArray, xr.Dataset)):
         return xr.concat(batch, "batch")
     elif isinstance(elem, collections.abc.Mapping):
         return {key: collate_with_xarray([d[key] for d in batch]) for key in elem}
+    elif isinstance(elem, str):
+        return torch.utils.data.dataloader.default_collate(batch)
     elif isinstance(elem, collections.abc.Sequence):
         # this was taken directly from pytorch's default collate.
         # check to make sure that the elements in batch have consistent size

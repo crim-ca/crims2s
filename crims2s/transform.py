@@ -268,13 +268,14 @@ class AddGeographyFeatures:
     def __init__(self, geography_file):
         geo_dataset = fix_s2s_dataset_dims(xr.open_dataset(geography_file))
         subset = geo_dataset[["orog"]]
-
         geo = normalize_dataset(subset)
         self.geo_features = geo.to_array().to_dataset(name="features")
 
     def __call__(self, batch):
         features = batch["features"]
-        new_features_dataset = xr.concat([features, self.geo_features], dim="variable")
+
+        geo_at_lead = self.geo_features.sel(lead_time=features.lead_time)
+        new_features_dataset = xr.concat([features, geo_at_lead], dim="variable")
 
         batch["features"] = new_features_dataset
 
