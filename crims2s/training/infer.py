@@ -95,12 +95,8 @@ def find_checkpoint_file(checkpoint_dir):
 def cli(cfg):
     transform = hydra.utils.instantiate(cfg.experiment.transform)
 
-    # The last transform is usually the one that turns everything into pytorch format.
-    # We remove it from the transform and perform it directly in the inference loop.
-    # This way, the inference loop has access to both the original xarray data (the
-    # labels are useful) and the pytorch data (to compute the inference).
-    # last_transform = transform.transforms.pop(-1)
-
+    # Find where we convert to pytorch. For inference we delay the conversion to pytorch
+    # because we want to use the xarray data as a template to generate the output file.
     for i, t in enumerate(transform.transforms):
         if isinstance(t, ExampleToPytorch):
             pytorch_transform_idx = i

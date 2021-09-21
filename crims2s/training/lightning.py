@@ -314,17 +314,11 @@ class S2SBayesModelModule(S2STercilesModule):
 
     def on_epoch_start(self) -> None:
         if self.current_epoch < self.model_only_epochs:
-            for p in self.model.t2m_weight_model.parameters():
-                p.requires_grad = False
-
-            for p in self.model.tp_weight_model.parameters():
+            for p in self.model.weight_model.parameters():
                 p.requires_grad = False
 
         else:
-            for p in self.model.t2m_weight_model.parameters():
-                p.requires_grad = True
-
-            for p in self.model.tp_weight_model.parameters():
+            for p in self.model.weight_model.parameters():
                 p.requires_grad = True
 
     def training_step(self, batch, batch_idx, optimizer_idx=None):

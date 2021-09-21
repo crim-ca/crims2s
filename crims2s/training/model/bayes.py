@@ -1,6 +1,7 @@
 """Models that use deep learning to perform a bayesian update on the prior and thus make
 a better forecast."""
 
+from crims2s.training.model.emos import NormalCubeNormalEMOS
 import numpy as np
 import torch
 import torch.nn as nn
@@ -115,6 +116,7 @@ class ConvolutionalWeightModel(nn.Module):
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
 
+        # Mean over the depth (time) dimension.
         x = x.mean(dim=-1)
 
         x = torch.transpose(
@@ -127,19 +129,36 @@ class ConvolutionalWeightModel(nn.Module):
         return x.squeeze()
 
 
+class SimpleConvWeightModel(nn.Module):
+    def __init__(self, in_features, kernel_size, padding, embedding_size, moments):
+        super().__init__()
+
+        self.t2m_model = ConvolutionalWeightModel(
+            in_features, kernel_size, padding, embedding_size, moments
+        )
+
+        self.tp_model = ConvolutionalWeightModel(
+            in_features, kernel_size, padding, embedding_size, moments
+        )
+
+    def forward(self, x):
+        x_t2m = self.t2m_model(x)
+        x_tp = self.tp_model(x)
+
+        return x_t2m, x_tp
+
+
 class BayesianUpdateModel(nn.Module):
     def __init__(
         self,
         forecast_model,
-        t2m_weight_model,
-        tp_weight_model,
+        weight_model,
         weight_model_factor=1.0,
         bias_correction=False,
     ):
         super().__init__()
         self.forecast_model = forecast_model
-        self.t2m_weight_model = t2m_weight_model
-        self.tp_weight_model = tp_weight_model
+        self.weight_model = weight_model
         self.t2m_to_terciles = DistributionToTerciles()
         self.tp_to_terciles = DistributionToTerciles()
         self.weight_model_factor = weight_model_factor
@@ -149,8 +168,8 @@ class BayesianUpdateModel(nn.Module):
         else:
             self.bias_correction_model = None
 
-    def make_weights(self, weight_model, features, nan_mask):
-        weights_from_model = self.weight_model_factor * weight_model(features)
+    def make_weights(self, weight_model_output, nan_mask):
+        weights_from_model = self.weight_model_factor * weight_model_output
 
         raw_update_weights = torch.where(
             nan_mask, torch.zeros_like(weights_from_model), weights_from_model,
@@ -181,12 +200,12 @@ class BayesianUpdateModel(nn.Module):
         # We use the key features features because of our conversion convention from
         # xarray to pytorch. The first features designates the features dataset. The
         # second features designates the features array inside the dataset.
-        t2m_weights = self.make_weights(
-            self.t2m_weight_model, example["features_features"], t2m_nan_mask
+        t2m_forecast_weight, tp_forecast_weight = self.weight_model(
+            example["features_features"]
         )
-        tp_weights = self.make_weights(
-            self.tp_weight_model, example["features_features"], tp_nan_mask
-        )
+
+        t2m_weights = self.make_weights(t2m_forecast_weight, t2m_nan_mask)
+        tp_weights = self.make_weights(tp_forecast_weight, tp_nan_mask)
 
         prior = torch.full_like(t2m_terciles, 1.0 / 3.0)
 
@@ -216,3 +235,195 @@ class BayesianUpdateModel(nn.Module):
             tp_terciles,
         )
 
+
+class Projection(nn.Module):
+    def __init__(self, in_features, out_features, moments=False, width=7, depth=2):
+        super().__init__()
+
+        self.conv = nn.Conv3d(
+            in_features,
+            out_features,
+            kernel_size=(width, width, depth),
+            padding=(width // 2, width // 2, 0),
+            padding_mode="circular",
+            bias=False,
+        )
+
+        self.bn = nn.BatchNorm3d(out_features)
+        self.act = nn.LeakyReLU()
+
+        self.moments = moments
+
+    def forward(self, features):
+        # Dims of example: batch, week, lead time, lat, lon, realization, dim.
+        x = features
+
+        # Compute mean and std of features across members.
+        if self.moments:
+            # Use average and STD of members as features.
+            x = torch.cat([features.mean(dim=-2), features.std(dim=-2)], dim=-1)
+        else:
+            # Select first member.
+            x = features[..., 0, :]
+
+        return self.act(self.bn(self.conv(x)))
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, n_features, width, depth):
+        super().__init__()
+
+        self.conv1 = nn.Conv3d(
+            n_features,
+            n_features,
+            kernel_size=(width, width, depth),
+            padding=(width // 2, width // 2, depth // 2),
+            padding_mode="circular",
+            bias=False,
+        )
+        self.act1 = nn.LeakyReLU()
+        self.bn1 = nn.BatchNorm3d(n_features)
+
+        self.conv2 = nn.Conv3d(
+            n_features,
+            n_features,
+            kernel_size=(width, width, depth),
+            padding=(width // 2, width // 2, depth // 2),
+            padding_mode="circular",
+            bias=False,
+        )
+        self.act2 = nn.LeakyReLU()
+        self.bn2 = nn.BatchNorm3d(n_features)
+
+    def forward(self, x):
+        x_in = x
+        x = self.act1(self.bn1(self.conv1(x)))
+        x = self.act2(self.bn2(x_in + self.conv2(x)))
+
+        return x
+
+
+class CommonTrunk(nn.Module):
+    def __init__(self, embedding_size, n_blocks=3, width=3, depth=3):
+        super().__init__()
+
+        self.blocks = nn.ModuleList(
+            [ConvBlock(embedding_size, width, depth) for _ in range(n_blocks)]
+        )
+
+    def forward(self, x):
+        for b in self.blocks:
+            x = b(x)
+
+        return x
+
+
+class VariableBranch(nn.Module):
+    def __init__(self, embedding_size, n_blocks=1, width=1, depth=1):
+        super().__init__()
+
+        self.blocks = nn.ModuleList(
+            [ConvBlock(embedding_size, width, depth) for _ in range(n_blocks)]
+        )
+
+        self.end_layer = nn.Conv2d(embedding_size, 2, kernel_size=(1, 1))
+
+    def forward(self, x):
+        for b in self.blocks:
+            x = b(x)
+
+        x = x.mean(dim=-1)  # Flatten the depth (time) dimension.
+
+        return self.end_layer(x)
+
+
+class GlobalBranchBlock(nn.Module):
+    def __init__(self, in_features, out_features, dilation=1):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(
+            in_features,
+            out_features,
+            kernel_size=3,
+            stride=2,
+            bias=False,
+            dilation=dilation,
+        )
+        self.bn1 = nn.BatchNorm2d(out_features)
+        self.act1 = nn.LeakyReLU()
+
+        self.conv2 = nn.Conv2d(
+            out_features, out_features, kernel_size=3, bias=False, dilation=dilation,
+        )
+        self.bn2 = nn.BatchNorm2d(out_features)
+        self.act2 = nn.LeakyReLU()
+
+    def forward(self, x):
+        x = self.act1(self.bn1(self.conv1(x)))
+
+        return self.act2(self.bn2(self.conv2(x)))
+
+
+class GlobalBranch(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+
+        size1 = max(out_features // 4, in_features)
+        size2 = max(out_features // 2, in_features)
+
+        self.block1 = GlobalBranchBlock(in_features, size1)
+        self.block2 = GlobalBranchBlock(size1, size2)
+        self.block3 = GlobalBranchBlock(size2, out_features)
+
+    def forward(self, x):
+        x = x.mean(dim=-1)  # Flatten time dimension.
+
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+
+        x = x.mean(dim=[-1, -2])  # Global average pooling to get a single vector.
+
+        return x
+
+
+class BiheadedWeightModel(nn.Module):
+    def __init__(self, in_features, embedding_size):
+        super().__init__()
+
+        self.projection = Projection(in_features, embedding_size)
+        self.common_trunk = CommonTrunk(embedding_size)
+        self.t2m_branch = VariableBranch(embedding_size)
+        self.tp_branch = VariableBranch(embedding_size)
+        self.global_branch = GlobalBranch(embedding_size, embedding_size)
+
+    def forward(self, x):
+        x = torch.transpose(x, 1, -1)  # Swap dims and depth.
+
+        x = self.projection(x)
+        x = self.common_trunk(x)
+        global_features = self.global_branch(x)
+        global_features = (
+            global_features.unsqueeze(dim=-1).unsqueeze(dim=-1).unsqueeze(dim=-1)
+        )
+
+        print("x", x.shape)
+        print("global", global_features.shape)
+
+        x_t2m = self.t2m_branch(x + global_features)
+        x_tp = self.tp_branch(x + global_features)
+
+        return x_t2m, x_tp
+
+
+# def biheaded_bayes_model(in_features, embedding_size=256):
+#     forecast_model = NormalCubeNormalEMOS(biweekly=True)
+
+#     t2m_weight_model = ConvolutionalWeightModel(
+#         in_features, embedding_size=embedding_size
+#     )
+#     tp_weight_model = ConvolutionalWeightModel(
+#         in_features, embedding_size=embedding_size
+#     )
+
+#     return BayesianUpdateModel(forecast_model, t2m_weight_model, tp_weight_model)

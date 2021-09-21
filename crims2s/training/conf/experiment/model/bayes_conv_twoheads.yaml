@@ -4,15 +4,6 @@ forecast_model:
   _target_: crims2s.training.model.emos.NormalCubeNormalEMOS
   biweekly: True
 weight_model:
-  _target_: crims2s.training.model.bayes.SimpleConvWeightModel
+  _target_: crims2s.training.model.bayes.BiheadedWeightModel
   in_features: 17
-  embedding_size: 128 
-  moments: False
-  kernel_size: 
-    - 5
-    - 5
-    - 2
-  padding:
-    - 2
-    - 2
-    - 1
+  embedding_size: 128

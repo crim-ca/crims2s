@@ -2,12 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.module import register_module_backward_hook
 
-from .util import (
-    DistributionModelAdapter,
-    ModelMultiplexer,
-    PytorchMultiplexer,
-    WeeklyModel,
-)
+from .util import PytorchMultiplexer
 from ...distribution import Gamma
 from ...util import ECMWF_FORECASTS
 
