@@ -6,4 +6,6 @@ forecast_model:
 weight_model:
   _target_: crims2s.training.model.bayes.BiheadedWeightModel
   in_features: 17
-  embedding_size: 128
+  embedding_size: 64
+  global_branch: True
+  dropout: 0.0

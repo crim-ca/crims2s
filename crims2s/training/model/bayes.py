@@ -270,7 +270,7 @@ class Projection(nn.Module):
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, n_features, width, depth):
+    def __init__(self, n_features, width, depth, dropout=0.0):
         super().__init__()
 
         self.conv1 = nn.Conv3d(
@@ -294,21 +294,29 @@ class ConvBlock(nn.Module):
         )
         self.act2 = nn.LeakyReLU()
         self.bn2 = nn.BatchNorm3d(n_features)
+        self.drop = nn.Dropout(dropout)
 
     def forward(self, x):
         x_in = x
         x = self.act1(self.bn1(self.conv1(x)))
-        x = self.act2(self.bn2(x_in + self.conv2(x)))
+
+        if self.drop.p > 0.0:
+            x = self.act2(self.drop(x_in + self.conv2(x)))
+        else:
+            x = self.act2(self.bn2(x_in + self.conv2(x)))
 
         return x
 
 
 class CommonTrunk(nn.Module):
-    def __init__(self, embedding_size, n_blocks=3, width=3, depth=3):
+    def __init__(self, embedding_size, n_blocks=3, width=3, depth=3, dropout=0.0):
         super().__init__()
 
         self.blocks = nn.ModuleList(
-            [ConvBlock(embedding_size, width, depth) for _ in range(n_blocks)]
+            [
+                ConvBlock(embedding_size, width, depth, dropout=dropout)
+                for _ in range(n_blocks)
+            ]
         )
 
     def forward(self, x):
@@ -319,11 +327,14 @@ class CommonTrunk(nn.Module):
 
 
 class VariableBranch(nn.Module):
-    def __init__(self, embedding_size, n_blocks=1, width=1, depth=1):
+    def __init__(self, embedding_size, n_blocks=1, width=1, depth=1, dropout=0.0):
         super().__init__()
 
         self.blocks = nn.ModuleList(
-            [ConvBlock(embedding_size, width, depth) for _ in range(n_blocks)]
+            [
+                ConvBlock(embedding_size, width, depth, dropout=dropout)
+                for _ in range(n_blocks)
+            ]
         )
 
         self.end_layer = nn.Conv2d(embedding_size, 2, kernel_size=(1, 1))
@@ -388,42 +399,35 @@ class GlobalBranch(nn.Module):
 
 
 class BiheadedWeightModel(nn.Module):
-    def __init__(self, in_features, embedding_size):
+    def __init__(self, in_features, embedding_size, global_branch=True, dropout=0.0):
         super().__init__()
 
+        self.global_branch = global_branch
+
         self.projection = Projection(in_features, embedding_size)
-        self.common_trunk = CommonTrunk(embedding_size)
-        self.t2m_branch = VariableBranch(embedding_size)
-        self.tp_branch = VariableBranch(embedding_size)
-        self.global_branch = GlobalBranch(embedding_size, embedding_size)
+        self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
+        self.t2m_branch = VariableBranch(embedding_size, dropout=dropout)
+        self.tp_branch = VariableBranch(embedding_size, dropout=dropout)
+
+        if self.global_branch:
+            self.global_branch = GlobalBranch(embedding_size, embedding_size)
 
     def forward(self, x):
         x = torch.transpose(x, 1, -1)  # Swap dims and depth.
 
         x = self.projection(x)
         x = self.common_trunk(x)
-        global_features = self.global_branch(x)
-        global_features = (
-            global_features.unsqueeze(dim=-1).unsqueeze(dim=-1).unsqueeze(dim=-1)
-        )
 
-        print("x", x.shape)
-        print("global", global_features.shape)
+        if self.global_branch:
+            global_features = self.global_branch(x)
+            global_features = (
+                global_features.unsqueeze(dim=-1).unsqueeze(dim=-1).unsqueeze(dim=-1)
+            )
 
-        x_t2m = self.t2m_branch(x + global_features)
-        x_tp = self.tp_branch(x + global_features)
+            x_t2m = self.t2m_branch(x + global_features)
+            x_tp = self.tp_branch(x + global_features)
+        else:
+            x_t2m = self.t2m_branch(x)
+            x_tp = self.tp_branch(x)
 
         return x_t2m, x_tp
-
-
-# def biheaded_bayes_model(in_features, embedding_size=256):
-#     forecast_model = NormalCubeNormalEMOS(biweekly=True)
-
-#     t2m_weight_model = ConvolutionalWeightModel(
-#         in_features, embedding_size=embedding_size
-#     )
-#     tp_weight_model = ConvolutionalWeightModel(
-#         in_features, embedding_size=embedding_size
-#     )
-
-#     return BayesianUpdateModel(forecast_model, t2m_weight_model, tp_weight_model)

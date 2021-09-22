@@ -1,9 +1,9 @@
 defaults:
   - dataset: lean
   - module: bayes
-  - model: bayes_conv_2d
+  - model: bayes_conv_twoheads
   - optimizer: spec_bayes_one_optim
-  - transform: latlon
+  - transform: geography
 
 include_features: True
 early_stopping:
