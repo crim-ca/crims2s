@@ -26,6 +26,7 @@ class PytorchMultiplexer(nn.Module):
             return model(*args)
         if isinstance(key, collections.abc.Iterable):
             model_outputs = []
+
             for i, k in enumerate(key):
                 unbatched_args = [a[i] for a in args]
                 model = self.models[k]
@@ -37,6 +38,21 @@ class PytorchMultiplexer(nn.Module):
         else:
             model = self.models[key]
             return model(*args)
+
+
+class MonthlyMultiplexer(PytorchMultiplexer):
+    def __init__(self, cls, *args, **kwargs):
+        monthly_models = {f"{month:02}": cls(*args, **kwargs) for month in range(1, 13)}
+
+        super().__init__("month", monthly_models)
+
+
+class WeeklyMultiplexer(PytorchMultiplexer):
+    def __init__(self, cls, *args, **kwargs):
+        monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
+        weekly_models = {monthday: cls(*args, **kwargs) for monthday in monthdays}
+
+        super().__init__("monthday", weekly_models)
 
 
 class ModelMultiplexer(nn.Module):
@@ -110,10 +126,6 @@ class DistributionToTerciles(nn.Module):
         self.regularization = regularization
 
     def forward(self, distribution, edges):
-        if len(edges.shape) == 5:
-            """Edges are batched. Swap batch and edge dim so that things broadcast well."""
-            edges = torch.transpose(edges, 0, 1)
-
         edges_cdf = compute_edges_cdf_from_distribution(
             distribution, edges, self.regularization
         )

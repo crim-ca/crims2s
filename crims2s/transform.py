@@ -147,6 +147,7 @@ class ExampleToPytorch:
             "edges",
             "model_parameters",
             "dry_mask",
+            "eccc_parameters",
         ]:
             if dataset_name in example:
                 dataset = example[dataset_name]
@@ -155,7 +156,7 @@ class ExampleToPytorch:
                         dataset[variable].data
                     )
 
-        for k in ["monthday", "month"]:
+        for k in ["monthday", "month", "eccc_available"]:
             pytorch_example[k] = example[k]
 
         for k in ["latitude", "longitude"]:

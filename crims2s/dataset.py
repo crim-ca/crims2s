@@ -1,5 +1,7 @@
 """PyTorch dataset for S2S data."""
 
+import netCDF4
+import numpy as np
 import pathlib
 from typing import Iterable, Union
 import torch
@@ -16,6 +18,11 @@ class TransformedDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.transform(self.dataset[idx])
+
+
+def netcdf_file_groups(netcdf_file):
+    root = netCDF4.Dataset(netcdf_file, "r")
+    return set(root.groups)
 
 
 class S2SDataset(torch.utils.data.Dataset):
@@ -58,5 +65,14 @@ class S2SDataset(torch.utils.data.Dataset):
             groups_to_read.append("/features")
 
         example = {k[1:]: xr.open_dataset(f, group=k) for k in groups_to_read}
+
+        if "eccc_parameters" in netcdf_file_groups(f):
+            example["eccc_available"] = True
+            example["eccc_parameters"] = xr.open_dataset(f, group="eccc_parameters")
+        else:
+            example["eccc_available"] = False
+            example["eccc_parameters"] = xr.full_like(
+                example["model_parameters"], np.nan
+            )
 
         return example

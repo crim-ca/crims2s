@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.module import register_module_backward_hook
 
-from .util import PytorchMultiplexer
+from .util import MonthlyMultiplexer, WeeklyMultiplexer
 from ...distribution import Gamma
 from ...util import ECMWF_FORECASTS
 
@@ -122,21 +122,6 @@ class NormalCubeNormalEMOS(TempPrecipEMOS):
         super().__init__(
             t2m_model, tp_model,
         )
-
-
-class MonthlyMultiplexer(PytorchMultiplexer):
-    def __init__(self, cls, *args, **kwargs):
-        monthly_models = {f"{month:02}": cls(*args, **kwargs) for month in range(1, 13)}
-
-        super().__init__("month", monthly_models)
-
-
-class WeeklyMultiplexer(PytorchMultiplexer):
-    def __init__(self, cls, *args, **kwargs):
-        monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
-        weekly_models = {monthday: cls(*args, **kwargs) for monthday in monthdays}
-
-        super().__init__("monthday", weekly_models)
 
 
 class MonthlyLinearModel(MonthlyMultiplexer):
