@@ -26,7 +26,10 @@ def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 
     train_years = list(range(2000, dataset_cfg.validate_from))
-    val_years = list(range(dataset_cfg.validate_from, 2020))
+    val_years = list(range(dataset_cfg.validate_from, dataset_cfg.end_year))
+
+    print("train_year", train_years)
+    print("val_year", val_years)
 
     if dataset_cfg.index is not None:
         month, day = ECMWF_FORECASTS[dataset_cfg.index]
@@ -43,6 +46,7 @@ def make_datasets(dataset_cfg, transform_cfg):
             years=train_years,
             name_filter=name_filter,
             include_features=dataset_cfg.include_features,
+            include_model=dataset_cfg.include_model,
         ),
         transform,
     )
@@ -52,6 +56,7 @@ def make_datasets(dataset_cfg, transform_cfg):
             years=val_years,
             name_filter=name_filter,
             include_features=dataset_cfg.include_features,
+            include_model=dataset_cfg.include_model,
         ),
         transform,
     )

@@ -1,4 +1,5 @@
 dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-14-lean
 include_features: True
 validate_from: 2018
+end_year: 2020  # Excluded.
 index:

@@ -105,16 +105,16 @@ class NormalNormalEMOS(TempPrecipEMOS):
 
 
 class NormalCubeNormalEMOS(TempPrecipEMOS):
-    def __init__(self, biweekly=False, regularization=1e-9):
+    def __init__(self, biweekly=False, regularization=1e-9, prefix="model_parameters"):
         t2m_model = MonthlyNormalEMOSModel(
-            "model_parameters_t2m_mu",
-            "model_parameters_t2m_sigma",
+            f"{prefix}_t2m_mu",
+            f"{prefix}_t2m_sigma",
             biweekly=biweekly,
             regularization=regularization,
         )
         tp_model = MonthlyNormalEMOSModel(
-            "model_parameters_tp_cube_root_mu",
-            "model_parameters_tp_cube_root_sigma",
+            f"{prefix}_tp_cube_root_mu",
+            f"{prefix}_tp_cube_root_sigma",
             biweekly=biweekly,
             regularization=regularization,
         )

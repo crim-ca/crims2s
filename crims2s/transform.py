@@ -112,11 +112,13 @@ class AddMetadata:
     """Add various metadata to the example dict."""
 
     def __call__(self, example):
-        model = example["model"]
+        model = example["obs"]
+        year = int(model.forecast_time.dt.year)
         month = int(model.forecast_time.dt.month)
         day = int(model.forecast_time.dt.day)
         example["monthday"] = f"{month:02}{day:02}"
         example["month"] = f"{month:02}"
+        example["year"] = f"{year:04}"
 
         example["latitude"] = model.latitude
         example["longitude"] = model.longitude
@@ -156,7 +158,7 @@ class ExampleToPytorch:
                         dataset[variable].data
                     )
 
-        for k in ["monthday", "month", "eccc_available"]:
+        for k in ["year", "monthday", "month", "eccc_available"]:
             pytorch_example[k] = example[k]
 
         for k in ["latitude", "longitude"]:

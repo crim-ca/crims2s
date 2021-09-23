@@ -31,6 +31,7 @@ class S2SDataset(torch.utils.data.Dataset):
         dataset_dir,
         name_filter=None,
         include_features=True,
+        include_model=False,
         years: Union[Iterable[int], None] = None,
     ):
         """Args:
@@ -52,6 +53,7 @@ class S2SDataset(torch.utils.data.Dataset):
         self.files = sorted(files)
 
         self.include_features = include_features
+        self.include_model = include_model
 
     def __len__(self):
         return len(self.files)
@@ -59,10 +61,13 @@ class S2SDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         f = self.files[idx]
 
-        groups_to_read = ["/obs", "/model", "/terciles", "/edges", "/model_parameters"]
+        groups_to_read = ["/obs", "/terciles", "/edges", "/model_parameters"]
 
         if self.include_features:
             groups_to_read.append("/features")
+
+        if self.include_model:
+            groups_to_read.append("/model")
 
         example = {k[1:]: xr.open_dataset(f, group=k) for k in groups_to_read}
 
