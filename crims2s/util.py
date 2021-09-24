@@ -1,5 +1,7 @@
+import collections.abc
 import numpy as np
 import pandas as pd
+import torch.utils.data.dataloader
 import xarray as xr
 
 # Month day list of the forecasts ECMWF does each year.
@@ -61,6 +63,27 @@ ECMWF_FORECASTS = [
 
 # The last date at which we can use the obs for training.
 TEST_THRESHOLD = "2020-01-01"
+
+
+def collate_with_xarray(batch):
+    elem = batch[0]
+    if isinstance(elem, (xr.DataArray, xr.Dataset)):
+        return xr.concat(batch, "batch")
+    elif isinstance(elem, collections.abc.Mapping):
+        return {key: collate_with_xarray([d[key] for d in batch]) for key in elem}
+    elif isinstance(elem, str):
+        return torch.utils.data.dataloader.default_collate(batch)
+    elif isinstance(elem, collections.abc.Sequence):
+        # this was taken directly from pytorch's default collate.
+        # check to make sure that the elements in batch have consistent size
+        it = iter(batch)
+        elem_size = len(next(it))
+        if not all(len(elem) == elem_size for elem in it):
+            raise RuntimeError("each element in list of batch should be of equal size")
+        transposed = zip(*batch)
+        return [collate_with_xarray(samples) for samples in transposed]
+    else:
+        return torch.utils.data.dataloader.default_collate(batch)
 
 
 def week_to_forecast_id(week):

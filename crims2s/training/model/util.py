@@ -1,8 +1,58 @@
+import collections.abc
+from typing import Iterable
 import torch
 import torch.nn as nn
 import numpy as np
 
 from ...util import ECMWF_FORECASTS
+
+
+class PytorchMultiplexer(nn.Module):
+    """Model multiplexer that only works on pytorch tensor inputs."""
+
+    def __init__(self, key, models):
+        super().__init__()
+
+        if isinstance(key, str):
+            self.key_fn = lambda x: x[key]
+        else:
+            self.key_fn = key
+
+        self.models = nn.ModuleDict(models)
+
+    def forward(self, key, *args):
+        if isinstance(key, str):
+            model = self.models[key]
+            return model(*args)
+        if isinstance(key, collections.abc.Iterable):
+            model_outputs = []
+
+            for i, k in enumerate(key):
+                unbatched_args = [a[i] for a in args]
+                model = self.models[k]
+
+                model_output = model(*unbatched_args)
+                model_outputs.append(model_output)
+
+            return torch.stack(model_outputs, dim=0)
+        else:
+            model = self.models[key]
+            return model(*args)
+
+
+class MonthlyMultiplexer(PytorchMultiplexer):
+    def __init__(self, cls, *args, **kwargs):
+        monthly_models = {f"{month:02}": cls(*args, **kwargs) for month in range(1, 13)}
+
+        super().__init__("month", monthly_models)
+
+
+class WeeklyMultiplexer(PytorchMultiplexer):
+    def __init__(self, cls, *args, **kwargs):
+        monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
+        weekly_models = {monthday: cls(*args, **kwargs) for monthday in monthdays}
+
+        super().__init__("monthday", weekly_models)
 
 
 class ModelMultiplexer(nn.Module):

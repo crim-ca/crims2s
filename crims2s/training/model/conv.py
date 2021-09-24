@@ -84,7 +84,6 @@ class DistributionConvPostProcessing(nn.Module):
         x = batch["features_features"]
 
         x = x[..., 0, :]  # Grab the first member.
-        x = x
         x = torch.transpose(x, 1, -1)  # Swap dims and depth.
 
         post_processing = torch.transpose(self.conv_model(x), 1, -1)

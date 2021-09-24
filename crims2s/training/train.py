@@ -26,7 +26,7 @@ def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 
     train_years = list(range(2000, dataset_cfg.validate_from))
-    val_years = list(range(dataset_cfg.validate_from, 2020))
+    val_years = list(range(dataset_cfg.validate_from, dataset_cfg.end_year))
 
     if dataset_cfg.index is not None:
         month, day = ECMWF_FORECASTS[dataset_cfg.index]
@@ -43,6 +43,7 @@ def make_datasets(dataset_cfg, transform_cfg):
             years=train_years,
             name_filter=name_filter,
             include_features=dataset_cfg.include_features,
+            include_model=dataset_cfg.include_model,
         ),
         transform,
     )
@@ -52,6 +53,7 @@ def make_datasets(dataset_cfg, transform_cfg):
             years=val_years,
             name_filter=name_filter,
             include_features=dataset_cfg.include_features,
+            include_model=dataset_cfg.include_model,
         ),
         transform,
     )
@@ -68,23 +70,20 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         batch_sampler=None,
         num_workers=num_workers,
         shuffle=True,
+        drop_last=False,
     )
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=cfg.batch_size,
         batch_sampler=None,
         num_workers=num_workers,
+        drop_last=False,
     )
 
     model = hydra.utils.instantiate(cfg.model)
     optimizer = hydra.utils.call(cfg.optimizer, model)
 
-    if "scheduler" in cfg:
-        scheduler = hydra.utils.instantiate(cfg.scheduler, optimizer)
-    else:
-        scheduler = None
-
-    lightning_module = hydra.utils.instantiate(cfg.module, model, optimizer, scheduler)
+    lightning_module = hydra.utils.instantiate(cfg.module, model, optimizer)
     tensorboard = loggers.TensorBoardLogger("./tensorboard", default_hp_metric=False)
 
     mlflow = loggers.MLFlowLogger(

@@ -1,7 +1,13 @@
 import torch
 import torch.nn as nn
 
-from .util import MonthlyModel, WeeklyModel
+from .util import (
+    MonthlyModel,
+    PytorchMultiplexer,
+    WeeklyModel,
+    MonthlyMultiplexer,
+    WeeklyMultiplexer,
+)
 
 
 class BiasCorrectionModel(nn.Module):
@@ -13,8 +19,18 @@ class BiasCorrectionModel(nn.Module):
         return model_parameter + self.bias
 
 
-class ModelParameterBiasCorrection(nn.Module):
+class WeeklyBiasCorrectionModel(WeeklyMultiplexer):
     def __init__(self):
+        super().__init__(BiasCorrectionModel)
+
+
+class MonthlyBiasCorrectionModel(MonthlyMultiplexer):
+    def __init__(self):
+        super().__init__(BiasCorrectionModel)
+
+
+class ModelParameterBiasCorrection(nn.Module):
+    def __init__(self, inner_cls=BiasCorrectionModel):
         super().__init__()
 
         keys_to_correct = [
@@ -25,7 +41,7 @@ class ModelParameterBiasCorrection(nn.Module):
             "model_parameters_tp_cube_root_mu",
             "model_parameters_tp_cube_root_sigma",
         ]
-        models = {k: BiasCorrectionModel() for k in keys_to_correct}
+        models = {k: inner_cls() for k in keys_to_correct}
 
         self.models = nn.ModuleDict(models)
 
@@ -36,10 +52,32 @@ class ModelParameterBiasCorrection(nn.Module):
         return batch
 
 
+class ModelParameterWeeklyBiasCorrection(ModelParameterBiasCorrection):
+    def __init__(self):
+        super().__init__(inner_cls=WeeklyBiasCorrectionModel)
+
+    def forward(self, batch):
+        for k in self.models:
+            batch[k] = self.models[k](batch["monthday"], batch[k])
+
+        return batch
+
+
+class ModelParameterMonthlyBiasCorrection(ModelParameterBiasCorrection):
+    def __init__(self):
+        super().__init__(inner_cls=MonthlyBiasCorrectionModel)
+
+    def forward(self, batch):
+        for k in self.models:
+            batch[k] = self.models[k](batch["month"], batch[k])
+
+        return batch
+
+
 class DistributionBiasCorrectionModel(nn.Module):
-    def __init__(self, regularization=1e-9):
+    def __init__(self, inner_model, regularization=1e-9):
         super().__init__()
-        self.inner = ModelParameterBiasCorrection()
+        self.inner = inner_model
         self.regularization = regularization
 
     def forward(self, batch):

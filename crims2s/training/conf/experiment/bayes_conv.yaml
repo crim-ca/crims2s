@@ -1,0 +1,14 @@
+defaults:
+  - dataset: lean
+  - module: bayes
+  - model: bayes_conv_twoheads
+  - optimizer: spec_bayes_one_optim
+  - transform: geography
+
+include_features: True
+early_stopping:
+  patience: 10
+
+batch_size: 4
+trainer:
+  accumulate_grad_batches: 1

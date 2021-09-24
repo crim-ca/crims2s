@@ -3,11 +3,11 @@ model:
   _target_: crims2s.training.model.emos.TempPrecipEMOS
   t2m_model:
     _target_: crims2s.training.model.MonthlyNormalEMOSModel
-    loc_key: model_parameters_t2m_mu
-    scale_key: model_parameters_t2m_sigma
+    loc_key: eccc_parameters_t2m_mu
+    scale_key: eccc_parameters_t2m_sigma
     biweekly: True
   tp_model:
     _target_: crims2s.training.model.MonthlyNormalEMOSModel
-    loc_key: model_parameters_tp_mu
-    scale_key: model_parameters_tp_sigma
+    loc_key: eccc_parameters_tp_cube_root_mu
+    scale_key: eccc_parameters_tp_cube_root_sigma
     biweekly: ${experiment.model.model.t2m_model.biweekly}

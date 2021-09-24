@@ -1,6 +1,5 @@
 """Generate a ML-ready dataset from the S2S competition data."""
 
-import datetime
 import hydra
 import logging
 import omegaconf
@@ -40,10 +39,12 @@ class ExamplePartMaker:
 
 
 class FeatureExamplePartMaker(ExamplePartMaker):
-    def __init__(self, features, remove_realizations=False, weekly_steps=False):
+    def __init__(
+        self, features, weekly_steps=False, n_realizations=None,
+    ):
         self.features = features
-        self.remove_realizations = remove_realizations
         self.weekly_steps = weekly_steps
+        self.n_realizations = n_realizations
 
     def __call__(self, year, example):
         features = (
@@ -54,8 +55,8 @@ class FeatureExamplePartMaker(ExamplePartMaker):
             .transpose("lead_time", "latitude", "longitude", "realization", "variable",)
         )
 
-        if self.remove_realizations:
-            features = features.isel(realization=[0])
+        if self.n_realizations:
+            features = features.isel(realization=list(range(self.n_realizations)))
 
         if self.weekly_steps:
             features = features.isel(lead_time=list(range(0, 7 * 6, 7)))
@@ -64,15 +65,21 @@ class FeatureExamplePartMaker(ExamplePartMaker):
 
 
 class ModelExamplePartMaker(ExamplePartMaker):
-    def __init__(self, model):
+    def __init__(self, model, n_realizations=None):
         self.model = model
+        self.n_realizations = n_realizations
 
     def __call__(self, year, example):
-        return (
+        model = (
             self.model.isel(forecast_monthday=0)
             .sel(forecast_year=year)
             .transpose("lead_time", "latitude", "longitude", "realization",)
         )
+
+        if self.n_realizations:
+            model = model.isel(realization=list(range(self.n_realizations)))
+
+        return model
 
 
 class TercilesExamplePartMaker(ExamplePartMaker):
@@ -111,6 +118,63 @@ class EdgesExamplePartMaker(ExamplePartMaker):
         return self.edges.isel(week=forecast_idx)
 
 
+def make_model_params(
+    model: xr.Dataset, weeks_12=False, interp_tp_na=False,
+) -> xr.Dataset:
+    """Convert daily model data to biweekly aggregated distributions. This 
+    function outputs the parameters for 4 distributions. Three for precipitation and
+    one for temperature."""
+    max_valid_time = model.valid_time.compute().max()
+    model_biweekly = add_biweekly_dim(model, weeks_12=weeks_12)
+
+    last_lead_times = model_biweekly.valid_time.where(
+        model_biweekly.valid_time <= max_valid_time, model_biweekly.forecast_time
+    ).argmax(dim="lead_time")
+
+    t2m_parameters = fit_normal_xarray(
+        model_biweekly.t2m, dim=["lead_time", "realization"]
+    )
+
+    tp_data = model_biweekly.isel(lead_time=last_lead_times).tp
+    if interp_tp_na:
+        realization_mean = tp_data.mean(dim="realization")
+        tp_data = xr.where(~tp_data.isnull(), tp_data, realization_mean)
+
+        if tp_data.isnull().any():
+            for max_gap in [1, 5]:
+                """Perform the interpolation with increasingly large interpolation windows."""
+                tp_data = (
+                    tp_data.interpolate_na(dim="realization", max_gap=max_gap)
+                    .interpolate_na(
+                        dim="longitude", max_gap=max_gap, use_coordinate=False
+                    )
+                    .interpolate_na(
+                        dim="latitude", max_gap=max_gap, use_coordinate=False
+                    )
+                    .interpolate_na(
+                        dim="biweekly_forecast", max_gap=max_gap, use_coordinate=False
+                    )
+                )
+
+        if tp_data.isnull().any():
+            _logger.warning(
+                "Interpolation did not get rid of all TP nans. Replacing with zeros."
+            )
+            tp_data = tp_data.fillna(0.0)
+
+    tp_parameters = fit_gamma_xarray(tp_data, dim="realization")
+    tp_parameters_normal = fit_normal_xarray(tp_data, dim="realization")
+
+    tp_cube_root = (tp_data ** (1.0 / 3.0)).rename("tp_cube_root")
+    tp_parameters_cube_root = fit_normal_xarray(tp_cube_root, dim="realization")
+
+    merged = xr.merge(
+        [t2m_parameters, tp_parameters, tp_parameters_normal, tp_parameters_cube_root,]
+    )
+
+    return merged
+
+
 class ModelParametersExamplePartMaker(ExamplePartMaker):
     def __init__(self, weeks_12):
         self.weeks_12 = weeks_12
@@ -119,35 +183,33 @@ class ModelParametersExamplePartMaker(ExamplePartMaker):
         _logger.debug("Computing model distribution parameters...")
 
         model = example["model"]
-        model_biweekly = add_biweekly_dim(model, weeks_12=self.weeks_12)
+        return make_model_params(model)
 
-        t2m_parameters = fit_normal_xarray(
-            model_biweekly.t2m, dim=["lead_time", "realization"]
+
+class ECCCModelParameters(ExamplePartMaker):
+    def __init__(self, eccc_data, weeks_12=False):
+        self.weeks_12 = weeks_12
+        self.eccc_data = eccc_data
+
+    def __call__(self, year, example):
+        if year < 1998 or year in [2018, 2019] or year > 2020:
+            return self.make_unavailable_eccc()
+        else:
+            return self.make_eccc_example_part(year)
+
+    def make_unavailable_eccc(self):
+        return None
+
+    def make_eccc_example_part(self, year):
+        eccc_data = (
+            self.eccc_data.isel(forecast_monthday=0)
+            .sel(forecast_year=year)
+            .transpose("lead_time", "latitude", "longitude", "realization")
         )
 
-        tp_parameters = fit_gamma_xarray(
-            model_biweekly.tp.isel(lead_time=-1), dim="realization"
-        )
+        params = make_model_params(eccc_data, weeks_12=self.weeks_12, interp_tp_na=True)
 
-        tp_parameters_normal = fit_normal_xarray(
-            model_biweekly.tp.isel(lead_time=-1), dim="realization"
-        )
-
-        tp_cube_root = (model_biweekly.tp.isel(lead_time=-1) ** (1.0 / 3.0)).rename(
-            "tp_cube_root"
-        )
-        tp_parameters_cube_root = fit_normal_xarray(tp_cube_root, dim="realization")
-
-        merged = xr.merge(
-            [
-                t2m_parameters,
-                tp_parameters,
-                tp_parameters_normal,
-                tp_parameters_cube_root,
-            ]
-        )
-
-        return merged
+        return params
 
 
 def datestrings_from_input_dir(input_dir, center):
@@ -193,16 +255,17 @@ def read_plev_fields(input_dir, center, fields, datestring, file_label="hindcast
     return xr.open_mfdataset(plev_files, preprocess=preprocess_single_level_file)
 
 
-def make_yearly_examples(years, makers):
-    examples = []
+def make_yearly_examples(years, makers, output_path):
     for year in years:
+        _logger.info(f"Making example for year {year}.")
         example = {}
         for name, part_maker in makers:
-            example[name] = part_maker(year, example)
+            _logger.debug(f" Making part {name}.")
+            example_part = part_maker(year, example)
+            if example_part is not None:
+                example[name] = part_maker(year, example)
 
-        examples.append(example)
-
-    return examples
+        save_example(example, output_path)
 
 
 def save_examples(examples, output_path):
@@ -305,6 +368,10 @@ def cli(cfg):
 
         model = flat_dataset[["t2m", "tp", "forecast_time"]]
 
+        eccc_data = read_flat_fields(
+            input_dir, "eccc", ["t2m", "tp"], datestring, file_label=cfg.set.file_label
+        )
+
         # Super evil temporary hack: the ECMWF data is sprinkled with nans, but it looks
         # like what are nans should be zeros. So we replace them arbitratily with zeros.
         model["tp"] = model["tp"].fillna(0.0)
@@ -334,12 +401,10 @@ def cli(cfg):
             (
                 "features",
                 FeatureExamplePartMaker(
-                    features,
-                    remove_realizations=cfg.remove_realizations,
-                    weekly_steps=True,
+                    features, n_realizations=cfg.n_realizations, weekly_steps=True,
                 ),
             ),
-            ("model", ModelExamplePartMaker(model)),
+            ("model", ModelExamplePartMaker(model, n_realizations=cfg.n_realizations)),
             ("terciles", TercilesExamplePartMaker(obs_terciled)),
             ("obs", ObsExamplePartMaker(raw_obs, cfg.set.valid_threshold)),
             ("edges", EdgesExamplePartMaker(edges)),
@@ -347,11 +412,9 @@ def cli(cfg):
                 "model_parameters",
                 ModelParametersExamplePartMaker(weeks_12=cfg.weeks_12),
             ),
+            ("eccc_parameters", ECCCModelParameters(eccc_data, weeks_12=cfg.weeks_12)),
         ]
-        examples = make_yearly_examples(years, part_makers)
-
-        _logger.info("Writing examples to disk...")
-        save_examples(examples, output_path)
+        make_yearly_examples(years, part_makers, output_path)
 
 
 if __name__ == "__main__":

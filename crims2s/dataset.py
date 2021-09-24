@@ -1,5 +1,7 @@
 """PyTorch dataset for S2S data."""
 
+import netCDF4
+import numpy as np
 import pathlib
 from typing import Iterable, Union
 import torch
@@ -18,12 +20,18 @@ class TransformedDataset(torch.utils.data.Dataset):
         return self.transform(self.dataset[idx])
 
 
+def netcdf_file_groups(netcdf_file):
+    root = netCDF4.Dataset(netcdf_file, "r")
+    return set(root.groups)
+
+
 class S2SDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         dataset_dir,
         name_filter=None,
         include_features=True,
+        include_model=False,
         years: Union[Iterable[int], None] = None,
     ):
         """Args:
@@ -45,6 +53,7 @@ class S2SDataset(torch.utils.data.Dataset):
         self.files = sorted(files)
 
         self.include_features = include_features
+        self.include_model = include_model
 
     def __len__(self):
         return len(self.files)
@@ -52,11 +61,23 @@ class S2SDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         f = self.files[idx]
 
-        groups_to_read = ["/obs", "/model", "/terciles", "/edges", "/model_parameters"]
+        groups_to_read = ["/obs", "/terciles", "/edges", "/model_parameters"]
 
         if self.include_features:
             groups_to_read.append("/features")
 
+        if self.include_model:
+            groups_to_read.append("/model")
+
         example = {k[1:]: xr.open_dataset(f, group=k) for k in groups_to_read}
+
+        if "eccc_parameters" in netcdf_file_groups(f):
+            example["eccc_available"] = True
+            example["eccc_parameters"] = xr.open_dataset(f, group="eccc_parameters")
+        else:
+            example["eccc_available"] = False
+            example["eccc_parameters"] = xr.full_like(
+                example["model_parameters"], np.nan
+            )
 
         return example

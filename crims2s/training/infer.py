@@ -9,7 +9,8 @@ import tqdm
 import xarray as xr
 
 from ..dataset import S2SDataset, TransformedDataset
-from ..util import ECMWF_FORECASTS
+from ..transform import ExampleToPytorch
+from ..util import ECMWF_FORECASTS, collate_with_xarray
 from .lightning import S2SBayesModelModule, S2STercilesModule
 
 _logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ def example_to_cuda(example):
     new_example = {}
 
     for k in example:
-        if k != "monthday":
+        if k not in ["monthday", "month", "year"]:
             new_example[k] = example[k].cuda()
         else:
             new_example[k] = example[k]
@@ -94,16 +95,14 @@ def find_checkpoint_file(checkpoint_dir):
 def cli(cfg):
     transform = hydra.utils.instantiate(cfg.experiment.transform)
 
-    # The last transform is usually the one that turns everything into pytorch format.
-    # We remove it from the transform and perform it directly in the inference loop.
-    # This way, the inference loop has access to both the original xarray data (the
-    # labels are useful) and the pytorch data (to compute the inference).
-    # last_transform = transform.transforms.pop(-1)
+    # Find where we convert to pytorch. For inference we delay the conversion to pytorch
+    # because we want to use the xarray data as a template to generate the output file.
+    for i, t in enumerate(transform.transforms):
+        if isinstance(t, ExampleToPytorch):
+            pytorch_transform_idx = i
 
-    last_transform = CompositeTransform(transform.transforms[-2:])
-
-    transform.transforms.pop(-1)
-    transform.transforms.pop(-1)
+    last_transform = CompositeTransform(transform.transforms[pytorch_transform_idx:])
+    transform.transforms = transform.transforms[:pytorch_transform_idx]
 
     years = list(range(cfg.begin, cfg.end))
 
@@ -128,9 +127,9 @@ def cli(cfg):
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_size=None,
+        batch_size=1,
         batch_sampler=None,
-        collate_fn=lambda x: x,
+        collate_fn=collate_with_xarray,
         num_workers=int(cfg.num_workers),
         shuffle=False,
     )
@@ -161,7 +160,10 @@ def cli(cfg):
         t2m_terciles, tp_terciles, *_ = lightning_module(pytorch_example)
 
         dataset = terciles_pytorch_to_xarray(
-            t2m_terciles.cpu(), tp_terciles.cpu(), example_forecast
+            t2m_terciles.cpu(),
+            tp_terciles.cpu(),
+            example_forecast,
+            dims=["batch", "category", "lead_time", "latitude", "longitude"],
         )
         datasets_of_examples.append(fix_dims_for_output(dataset))
 
@@ -169,7 +171,11 @@ def cli(cfg):
         datasets_of_examples, key=lambda x: str(x.forecast_time.data[0])
     )
 
-    ml_prediction = xr.concat(sorted_datasets, dim="forecast_time").drop("valid_time")
+    ml_prediction = (
+        xr.concat(sorted_datasets, dim="forecast_time")
+        .drop("valid_time")
+        .squeeze("batch")
+    )
 
     _logger.info(f"Outputting forecasts to {os.getcwd() + '/' + cfg.output_file}.")
     ml_prediction.to_netcdf(cfg.output_file)

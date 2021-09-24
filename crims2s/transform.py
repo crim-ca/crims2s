@@ -112,10 +112,13 @@ class AddMetadata:
     """Add various metadata to the example dict."""
 
     def __call__(self, example):
-        model = example["model"]
+        model = example["obs"]
+        year = int(model.forecast_time.dt.year)
         month = int(model.forecast_time.dt.month)
         day = int(model.forecast_time.dt.day)
         example["monthday"] = f"{month:02}{day:02}"
+        example["month"] = f"{month:02}"
+        example["year"] = f"{year:04}"
 
         example["latitude"] = model.latitude
         example["longitude"] = model.longitude
@@ -146,6 +149,7 @@ class ExampleToPytorch:
             "edges",
             "model_parameters",
             "dry_mask",
+            "eccc_parameters",
         ]:
             if dataset_name in example:
                 dataset = example[dataset_name]
@@ -154,7 +158,7 @@ class ExampleToPytorch:
                         dataset[variable].data
                     )
 
-        for k in ["monthday"]:
+        for k in ["year", "monthday", "month", "eccc_available"]:
             pytorch_example[k] = example[k]
 
         for k in ["latitude", "longitude"]:
@@ -267,13 +271,14 @@ class AddGeographyFeatures:
     def __init__(self, geography_file):
         geo_dataset = fix_s2s_dataset_dims(xr.open_dataset(geography_file))
         subset = geo_dataset[["orog"]]
-
         geo = normalize_dataset(subset)
         self.geo_features = geo.to_array().to_dataset(name="features")
 
     def __call__(self, batch):
         features = batch["features"]
-        new_features_dataset = xr.concat([features, self.geo_features], dim="variable")
+
+        geo_at_lead = self.geo_features.sel(lead_time=features.lead_time)
+        new_features_dataset = xr.concat([features, geo_at_lead], dim="variable")
 
         batch["features"] = new_features_dataset
 
