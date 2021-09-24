@@ -76,7 +76,7 @@ def example_to_cuda(example):
     new_example = {}
 
     for k in example:
-        if k not in ["monthday", "month"]:
+        if k not in ["monthday", "month", "year"]:
             new_example[k] = example[k].cuda()
         else:
             new_example[k] = example[k]

@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .bias import ModelParameterBiasCorrection
-from .util import DistributionToTerciles
+from .util import DistributionModelAdapter, DistributionToTerciles
 
 
 class WeightModel(nn.Module):
@@ -231,8 +231,170 @@ class BayesianUpdateModel(nn.Module):
             tp,
             t2m_weights[:, 0][~t2m_nan_mask],
             tp_weights[:, 0][~tp_nan_mask],
-            t2m_terciles,
-            tp_terciles,
+            # t2m_terciles,
+            # tp_terciles,
+        )
+
+
+class ECMWFModelWrapper(DistributionModelAdapter):
+    def __init__(self):
+        model = NormalCubeNormalEMOS(biweekly=True)
+        super().__init__(model)
+
+
+class ECCCModelWrapper(DistributionModelAdapter):
+    def __init__(self):
+        model = NormalCubeNormalEMOS(biweekly=True, prefix="eccc_parameters")
+        super().__init__(model)
+
+    def forward(self, batch):
+        eccc_available = batch["eccc_available"]
+        print(eccc_available)
+
+        if eccc_available.all():
+            return super().forward(batch)
+
+        # Assume uniform distribution. If eccc forecast is available, replace
+        # uniform prior with the eccc forecast.
+        t2m = torch.full_like(batch["terciles_t2m"], 1.0 / 3.0)
+        tp = torch.full_like(batch["terciles_tp"], 1.0 / 3.0)
+
+        if not eccc_available.any():
+            return t2m, tp
+
+
+        # The mixed case is the trickyest.
+
+        # Make a new batch where there only is eccc available examples.
+        eccc_available_batch = {}
+        for k in batch.keys():
+            if k.startswith("eccc_parameters") or k.startswith("edges_"):
+                eccc_available_batch[k] = batch[k][eccc_available]
+
+            if k in ["month", "monthday", "year"]:
+                eccc_available_batch[k] = np.array(batch[k])[eccc_available.cpu()]
+
+        print(eccc_available_batch["month"])
+
+        t2m_eccc, tp_eccc = super().forward(eccc_available_batch)
+
+        t2m[eccc_available] = t2m_eccc
+        tp[eccc_available] = tp_eccc
+
+        return t2m, tp
+
+
+class ClimatologyModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, batch):
+        t2m = torch.full_like(batch["terciles_t2m"], 1.0 / 3.0)
+        tp = torch.full_like(batch["terciles_tp"], 1.0 / 3.0)
+        return t2m, tp
+
+
+class MultiCenterBayesianUpdateModel(nn.Module):
+    def __init__(
+        self, forecast_models, weight_model, bias_correction=False,
+    ):
+        super().__init__()
+        self.forecast_models = nn.ModuleList(forecast_models)
+        self.weight_model = weight_model
+
+        if bias_correction:
+            self.bias_correction_model = ModelParameterBiasCorrection()
+        else:
+            self.bias_correction_model = None
+
+    def make_weights(self, weight_model_output, nan_mask):
+        weights = weight_model_output
+
+        batch_size = weight_model_output.shape[0]
+        n_forecasts = len(self.forecast_models)
+        n_lead_time = 2
+        weights = weight_model_output.reshape(
+            batch_size, n_forecasts, n_lead_time, *weight_model_output.shape[-2:]
+        )
+
+        # Don't give any weight to a forecast that had a nan.
+        weights = torch.where(
+            ~nan_mask,
+            weights,
+            torch.tensor(-1e12, dtype=weights.dtype, device=weights.device),
+        )
+        weights = torch.softmax(weights, dim=1)
+
+        return weights
+
+    def make_forecasts(self, example):
+        print("make forecasts")
+        t2m_forecasts, tp_forecasts = [], []
+        for m in self.forecast_models:
+            t2m_forecast, tp_forecast = m(example)
+
+            t2m_forecasts.append(t2m_forecast)
+            tp_forecasts.append(tp_forecast)
+
+            print("t2m nans", t2m_forecast.isnan().float().mean())
+            print("tp nans", tp_forecast.isnan().float().mean())
+
+        t2m_forecasts = torch.stack(t2m_forecasts, dim=1)
+        tp_forecasts = torch.stack(tp_forecasts, dim=1)
+
+        return t2m_forecasts, tp_forecasts
+
+    def forward(self, example):
+        if self.bias_correction_model is not None:
+            example = self.bias_correction_model(example)
+
+        t2m_forecasts, tp_forecasts = self.make_forecasts(example)
+
+        # At this point the dims are: batch, model, category, lead_time, lat, lon.
+
+        print("t2m estimates", t2m_forecasts.shape)
+
+        t2m_nan_mask = t2m_forecasts.isnan().any(dim=2)
+        t2m_forecasts = torch.nan_to_num(t2m_forecasts, 0.0)
+
+        tp_nan_mask = tp_forecasts.isnan().any(dim=2)
+        tp_forecasts = torch.nan_to_num(tp_forecasts, 0.0)
+
+        t2m_forecast_weight, tp_forecast_weight = self.weight_model(
+            example["features_features"]
+        )
+
+        t2m_weights = self.make_weights(t2m_forecast_weight, t2m_nan_mask)
+        tp_weights = self.make_weights(tp_forecast_weight, tp_nan_mask)
+
+        # Meaning of the keys: Batch, Model (prior or ecmwf or eccc), Category, Lead time, lAtitude, lOngitude
+        t2m = torch.einsum("bmclao,bmlao->bclao", t2m_forecasts, t2m_weights)
+        tp = torch.einsum("bmclao,bmlao->bclao", tp_forecasts, tp_weights)
+
+        # torch.transpose(t2m, 0, 1)[:, t2m_nan_mask] = np.nan
+        # torch.transpose(tp, 0, 1)[:, tp_nan_mask] = np.nan
+
+        # t2m_prior_weights = torch.where(
+        #     ~t2m_nan_mask, t2m_weights[1], torch.zeros_like(t2m_weights[1])
+        # )
+        # tp_prior_weights = torch.where(
+        #     ~tp_nan_mask, tp_weights[1], torch.zeros_like(tp_weights[1])
+        # )
+
+        t2m_nan_mask = example["terciles_t2m"].isnan().any(dim=1)
+        tp_nan_mask = example["terciles_tp"].isnan().any(dim=1)
+
+        print("t2m weights", t2m_weights.shape)
+        print("t2m_nan_mask", t2m_nan_mask.shape)
+
+        print("t2m_nan rate where prior", t2m_nan_mask[:, 0].float().mean())
+
+        # Model index 0 is the climatology model. It's the one we regularize again.
+        return (
+            t2m,
+            tp,
+            t2m_weights[:, 0][~t2m_nan_mask],
+            tp_weights[:, 0][~tp_nan_mask],
         )
 
 
@@ -327,7 +489,9 @@ class CommonTrunk(nn.Module):
 
 
 class VariableBranch(nn.Module):
-    def __init__(self, embedding_size, n_blocks=1, width=1, depth=1, dropout=0.0):
+    def __init__(
+        self, embedding_size, n_blocks=1, width=1, depth=1, dropout=0.0, out_features=2
+    ):
         super().__init__()
 
         self.blocks = nn.ModuleList(
@@ -337,7 +501,7 @@ class VariableBranch(nn.Module):
             ]
         )
 
-        self.end_layer = nn.Conv2d(embedding_size, 2, kernel_size=(1, 1))
+        self.end_layer = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
 
     def forward(self, x):
         for b in self.blocks:
@@ -399,15 +563,26 @@ class GlobalBranch(nn.Module):
 
 
 class BiheadedWeightModel(nn.Module):
-    def __init__(self, in_features, embedding_size, global_branch=True, dropout=0.0):
+    def __init__(
+        self,
+        in_features,
+        embedding_size,
+        global_branch=True,
+        dropout=0.0,
+        out_features=2,
+    ):
         super().__init__()
 
         self.global_branch = global_branch
 
         self.projection = Projection(in_features, embedding_size)
         self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
-        self.t2m_branch = VariableBranch(embedding_size, dropout=dropout)
-        self.tp_branch = VariableBranch(embedding_size, dropout=dropout)
+        self.t2m_branch = VariableBranch(
+            embedding_size, dropout=dropout, out_features=out_features
+        )
+        self.tp_branch = VariableBranch(
+            embedding_size, dropout=dropout, out_features=out_features
+        )
 
         if self.global_branch:
             self.global_branch = GlobalBranch(embedding_size, embedding_size)

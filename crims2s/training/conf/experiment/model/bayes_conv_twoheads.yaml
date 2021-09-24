@@ -8,4 +8,4 @@ weight_model:
   in_features: 17
   embedding_size: 64
   global_branch: True
-  dropout: 0.0
+  dropout: 0.05

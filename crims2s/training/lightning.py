@@ -327,8 +327,6 @@ class S2SBayesModelModule(S2STercilesModule):
             tp_terciles,
             t2m_prior_weights,
             tp_prior_weights,
-            t2m_no_weights,
-            tp_no_weights,
         ) = self.forward(batch)
 
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
@@ -336,11 +334,11 @@ class S2SBayesModelModule(S2STercilesModule):
 
         loss = fields_loss + reg_loss
 
-        with torch.no_grad():
-            # Log EMOS only errors for scheduling purposes.
-            _ = self.compute_fields_loss(
-                batch, t2m_no_weights, tp_no_weights, model="EMOS"
-            )
+        # with torch.no_grad():
+        #     # Log EMOS only errors for scheduling purposes.
+        #     _ = self.compute_fields_loss(
+        #         batch, t2m_no_weights, tp_no_weights, model="EMOS"
+        #     )
 
         self.log("Loss_Epoch/All/Train", loss, on_epoch=True, on_step=False)
         self.log("Loss_Step/All/Train", loss, on_epoch=False, on_step=True)
@@ -397,13 +395,11 @@ class S2SBayesModelModule(S2STercilesModule):
             tp_terciles,
             t2m_prior_weights,
             tp_prior_weights,
-            t2m_no_weights,
-            tp_no_weights,
         ) = self.forward(batch)
 
-        _ = self.compute_fields_loss(
-            batch, t2m_no_weights, tp_no_weights, model="EMOS", label="Val"
-        )
+        # _ = self.compute_fields_loss(
+        #     batch, t2m_no_weights, tp_no_weights, model="EMOS", label="Val"
+        # )
 
         fields_loss = self.compute_fields_loss(
             batch, t2m_terciles, tp_terciles, label="Val"

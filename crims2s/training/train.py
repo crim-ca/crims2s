@@ -28,9 +28,6 @@ def make_datasets(dataset_cfg, transform_cfg):
     train_years = list(range(2000, dataset_cfg.validate_from))
     val_years = list(range(dataset_cfg.validate_from, dataset_cfg.end_year))
 
-    print("train_year", train_years)
-    print("val_year", val_years)
-
     if dataset_cfg.index is not None:
         month, day = ECMWF_FORECASTS[dataset_cfg.index]
         label = f"{month:02}{day:02}.nc"

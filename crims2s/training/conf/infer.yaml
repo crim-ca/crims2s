@@ -17,7 +17,7 @@ checkpoint_dir: ???
 output_file: ???
 
 
-test_dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-14-lean-test
+test_dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-23-eccc-test
 
 
 # Default values for the experiment. They are meant to be overridden by the
