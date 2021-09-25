@@ -229,11 +229,17 @@ class BayesianUpdateModel(nn.Module):
         return (
             t2m,
             tp,
-            t2m_weights[:, 0][~t2m_nan_mask],
-            tp_weights[:, 0][~tp_nan_mask],
+            torch.transpose(t2m_weights, 0, 1)[:, ~t2m_nan_mask],
+            torch.transpose(tp_weights, 0, 1)[:, ~tp_nan_mask],
             # t2m_terciles,
             # tp_terciles,
         )
+
+    def forecast_models_parameters(self):
+        return self.forecast_model.parameters()
+
+    def weight_model_parameters(self):
+        return self.weight_model.parameters()
 
 
 class ECMWFModelWrapper(DistributionModelAdapter):
@@ -249,7 +255,6 @@ class ECCCModelWrapper(DistributionModelAdapter):
 
     def forward(self, batch):
         eccc_available = batch["eccc_available"]
-        print(eccc_available)
 
         if eccc_available.all():
             return super().forward(batch)
@@ -262,7 +267,6 @@ class ECCCModelWrapper(DistributionModelAdapter):
         if not eccc_available.any():
             return t2m, tp
 
-
         # The mixed case is the trickyest.
 
         # Make a new batch where there only is eccc available examples.
@@ -273,8 +277,6 @@ class ECCCModelWrapper(DistributionModelAdapter):
 
             if k in ["month", "monthday", "year"]:
                 eccc_available_batch[k] = np.array(batch[k])[eccc_available.cpu()]
-
-        print(eccc_available_batch["month"])
 
         t2m_eccc, tp_eccc = super().forward(eccc_available_batch)
 
@@ -296,7 +298,7 @@ class ClimatologyModel(nn.Module):
 
 class MultiCenterBayesianUpdateModel(nn.Module):
     def __init__(
-        self, forecast_models, weight_model, bias_correction=False,
+        self, forecast_models, weight_model: nn.Module, bias_correction=False,
     ):
         super().__init__()
         self.forecast_models = nn.ModuleList(forecast_models)
@@ -328,16 +330,12 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         return weights
 
     def make_forecasts(self, example):
-        print("make forecasts")
         t2m_forecasts, tp_forecasts = [], []
         for m in self.forecast_models:
             t2m_forecast, tp_forecast = m(example)
 
             t2m_forecasts.append(t2m_forecast)
             tp_forecasts.append(tp_forecast)
-
-            print("t2m nans", t2m_forecast.isnan().float().mean())
-            print("tp nans", tp_forecast.isnan().float().mean())
 
         t2m_forecasts = torch.stack(t2m_forecasts, dim=1)
         tp_forecasts = torch.stack(tp_forecasts, dim=1)
@@ -351,8 +349,6 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         t2m_forecasts, tp_forecasts = self.make_forecasts(example)
 
         # At this point the dims are: batch, model, category, lead_time, lat, lon.
-
-        print("t2m estimates", t2m_forecasts.shape)
 
         t2m_nan_mask = t2m_forecasts.isnan().any(dim=2)
         t2m_forecasts = torch.nan_to_num(t2m_forecasts, 0.0)
@@ -384,18 +380,19 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         t2m_nan_mask = example["terciles_t2m"].isnan().any(dim=1)
         tp_nan_mask = example["terciles_tp"].isnan().any(dim=1)
 
-        print("t2m weights", t2m_weights.shape)
-        print("t2m_nan_mask", t2m_nan_mask.shape)
-
-        print("t2m_nan rate where prior", t2m_nan_mask[:, 0].float().mean())
-
         # Model index 0 is the climatology model. It's the one we regularize again.
         return (
             t2m,
             tp,
-            t2m_weights[:, 0][~t2m_nan_mask],
-            tp_weights[:, 0][~tp_nan_mask],
+            torch.transpose(t2m_weights, 0, 1)[:, ~t2m_nan_mask],
+            torch.transpose(tp_weights, 0, 1)[:, ~tp_nan_mask],
         )
+
+    def forecast_models_parameters(self):
+        return self.forecast_models.parameters()
+
+    def weight_model_parameters(self):
+        return self.weight_model.parameters()
 
 
 class Projection(nn.Module):
