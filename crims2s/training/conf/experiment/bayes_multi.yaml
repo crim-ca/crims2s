@@ -2,7 +2,7 @@ defaults:
   - dataset: eccc
   - module: bayes
   - model: bayes_multi
-  - optimizer: spec_bayes_one_optim
+  - optimizer: spec_bayes_stop_forecast
   - transform: geography
 
 dataset:
@@ -10,6 +10,12 @@ dataset:
 early_stopping:
   patience: 10
 
+forecast_only_epochs: 2  # Only train forecast model for the first few epochs.
+weights_only_epoch: 4 # Only train weights starting from this epoch.
+
+callbacks:
+  - _target_: crims2s.training.callback.BayesForecastFreezeUnfreezeCallback
+    unfreeze_weights_epoch: ${experiment.forecast_only_epochs}
 
 batch_size: 4
 trainer:

@@ -1,4 +1,3 @@
-import collections.abc
 import hydra
 import logging
 import os
@@ -103,9 +102,15 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
 
     checkpointer = ModelCheckpoint(monitor="val_loss")
 
+    other_callbacks = []
+    if "callbacks" in cfg:
+        for callback_dict in cfg.callbacks:
+            other_callbacks.append(hydra.utils.instantiate(callback_dict))
+
     callbacks = [
         checkpointer,
         pl_callbacks.LearningRateMonitor(),
+        *other_callbacks,
     ]
     if "early_stopping" in cfg:
         early_stopping = pl_callbacks.EarlyStopping(

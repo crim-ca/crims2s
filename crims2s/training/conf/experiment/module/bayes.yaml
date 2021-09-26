@@ -1,5 +1,6 @@
 _target_: crims2s.training.lightning.S2SBayesModelModule
-regularization: 1e-3
+regularization: 1e-2
+regularization_scheme: l2
 model_only_epochs: 2
 weight_only_at_epoch: 
 reweight_by_area: True
