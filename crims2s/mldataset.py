@@ -9,7 +9,13 @@ import xarray as xr
 
 from .distribution import fit_gamma_xarray, fit_normal_xarray
 from .transform import normalize_dataset
-from .util import add_biweekly_dim, fix_dataset_dims, ECMWF_FORECASTS, TEST_THRESHOLD
+from .util import (
+    add_biweekly_dim,
+    fix_dataset_dims,
+    ECMWF_FORECASTS,
+    NCEP_FORECASTS,
+    TEST_THRESHOLD,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -212,6 +218,56 @@ class ECCCModelParameters(ExamplePartMaker):
         return params
 
 
+def trim_ncep_forecast(ncep_forecast: xr.Dataset, reference_forecast):
+    """Trim ncep forecast so that its coordinates match a reference forecast."""
+    ncep_forecast = ncep_forecast.squeeze(dim="forecast_monthday", drop=False)
+    ncep_forecast = ncep_forecast.sel(forecast_year=reference_forecast.forecast_year)
+
+    ncep_forecast = ncep_forecast.where(
+        ncep_forecast.valid_time >= reference_forecast.valid_time[0], drop=True
+    )
+
+    ncep_forecast = ncep_forecast.assign_coords(
+        {
+            "lead_time": reference_forecast.lead_time[
+                slice(0, ncep_forecast.sizes["lead_time"])
+            ],
+            "forecast_time": reference_forecast.forecast_time,
+            "forecast_monthday": reference_forecast.forecast_monthday,
+        }
+    )
+
+    return ncep_forecast
+
+
+class NCEPModelParameters(ExamplePartMaker):
+    def __init__(self, ncep_data, weeks_12=False):
+        self.ncep_data = ncep_data
+        self.weeks_12 = False
+
+    def __call__(self, year, example):
+        model = example["model"]
+        if model.forecast_monthday in ["0102", "1231"]:
+            # These forecasts have no direct association in the NCEP forecasts.
+            return None
+        elif (year >= 1999 and year <= 2010) or year == 2020:
+            return self.make_ncep_example_part(year, example)
+        else:
+            return None
+
+    def make_ncep_example_part(self, year, example):
+        model = example["model"]
+        ncep_data = trim_ncep_forecast(self.ncep_data, model)
+
+        ncep_data = ncep_data.transpose(
+            "lead_time", "latitude", "longitude", "realization"
+        )
+
+        params = make_model_params(ncep_data, weeks_12=self.weeks_12, interp_tp_na=True)
+
+        return params
+
+
 def datestrings_from_input_dir(input_dir, center):
     input_path = pathlib.Path(input_dir)
     return sorted(
@@ -257,7 +313,7 @@ def read_plev_fields(input_dir, center, fields, datestring, file_label="hindcast
 
 def make_yearly_examples(years, makers, output_path):
     for year in years:
-        _logger.info(f"Making example for year {year}.")
+        _logger.info(f"Making example for year {year.data}.")
         example = {}
         for name, part_maker in makers:
             _logger.debug(f" Making part {name}.")
@@ -309,6 +365,24 @@ def read_raw_obs(t2m_file, pr_file, preprocess=lambda x: x):
     pr = preprocess(xr.open_dataset(pr_file))
 
     return xr.merge([t2m, pr])
+
+
+def ecmwf_datestring_to_ncep_datestring(datestring, set="train"):
+    """For an ecmwf datestring, output the corresponding ncep forecast datestring."""
+    year, month, day = int(datestring[:4]), int(datestring[4:6]), int(datestring[6:])
+    index = ECMWF_FORECASTS.index((month, day))
+
+    if set == "train":
+        output_year = 2010
+    else:
+        output_year = 2020
+
+    if index in [0, 52]:
+        # Some forecasts have no ncep correspondence.
+        return None
+    else:
+        ncep_forecast = NCEP_FORECASTS[index - 1]
+        return "{:04}{:02}{:02}".format(output_year, ncep_forecast[0], ncep_forecast[1])
 
 
 @hydra.main(config_path="conf", config_name="mldataset")
@@ -372,6 +446,25 @@ def cli(cfg):
             input_dir, "eccc", ["t2m", "tp"], datestring, file_label=cfg.set.file_label
         )
 
+        ncep_datestring = ecmwf_datestring_to_ncep_datestring(
+            datestring, set=cfg.set.name
+        )
+
+        if ncep_datestring:
+            ncep_data = read_flat_fields(
+                input_dir,
+                "ncep",
+                ["t2m", "tp"],
+                ncep_datestring,
+                file_label=cfg.set.file_label,
+            )
+            ncep_data = ncep_data.where(
+                ncep_data.forecast_year >= model.forecast_year[0], drop=True
+            )
+        else:
+            _logger.info("No corresponding NCEP forecast found. Skipping NCEP.")
+            ncep_data = None
+
         # Super evil temporary hack: the ECMWF data is sprinkled with nans, but it looks
         # like what are nans should be zeros. So we replace them arbitratily with zeros.
         model["tp"] = model["tp"].fillna(0.0)
@@ -413,6 +506,7 @@ def cli(cfg):
                 ModelParametersExamplePartMaker(weeks_12=cfg.weeks_12),
             ),
             ("eccc_parameters", ECCCModelParameters(eccc_data, weeks_12=cfg.weeks_12)),
+            ("ncep_parameters", NCEPModelParameters(ncep_data, weeks_12=cfg.weeks_12)),
         ]
         make_yearly_examples(years, part_makers, output_path)
 

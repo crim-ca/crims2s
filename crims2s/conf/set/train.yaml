@@ -9,3 +9,4 @@ last_forecast: "2019-11-20"
 year:
 file_label: "hindcast"
 valid_threshold: "2020-01-01"
+name: train
