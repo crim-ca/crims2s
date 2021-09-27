@@ -150,6 +150,7 @@ class ExampleToPytorch:
             "model_parameters",
             "dry_mask",
             "eccc_parameters",
+            "ncep_parameters",
         ]:
             if dataset_name in example:
                 dataset = example[dataset_name]
@@ -158,7 +159,7 @@ class ExampleToPytorch:
                         dataset[variable].data
                     )
 
-        for k in ["year", "monthday", "month", "eccc_available"]:
+        for k in ["year", "monthday", "month", "eccc_available", "ncep_available"]:
             pytorch_example[k] = example[k]
 
         for k in ["latitude", "longitude"]:

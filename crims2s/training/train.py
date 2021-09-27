@@ -27,14 +27,27 @@ def make_datasets(dataset_cfg, transform_cfg):
     train_years = list(range(2000, dataset_cfg.validate_from))
     val_years = list(range(dataset_cfg.validate_from, dataset_cfg.end_year))
 
+    _logger.info(f"train year: {train_years}")
+    _logger.info(f"val years: {val_years}")
+
+    filter_lambdas = []
     if dataset_cfg.index is not None:
         month, day = ECMWF_FORECASTS[dataset_cfg.index]
         label = f"{month:02}{day:02}.nc"
 
         _logger.info("Targetting monthday %s", label)
-        name_filter = lambda x: x.endswith(label)
-    else:
-        name_filter = None
+        filter_lambdas.append(lambda x: x.endswith(label))
+
+    if dataset_cfg.ncep_filter == True:
+        filter_lambdas.append(
+            lambda x: not (x.endswith("0102.nc") or x.endswith("1231.nc"))
+        )
+
+    def name_filter(x):
+        if filter_lambdas:
+            return all([f(x) for f in filter_lambdas])
+        else:
+            return True
 
     train_dataset = TransformedDataset(
         S2SDataset(
@@ -62,6 +75,9 @@ def make_datasets(dataset_cfg, transform_cfg):
 
 def run_experiment(cfg, num_workers=4, lr_find=False):
     train_dataset, val_dataset = make_datasets(cfg.dataset, cfg.transform)
+    _logger.info(
+        f"Length of datasets. Train: {len(train_dataset)}. Val: {len(val_dataset)}."
+    )
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,

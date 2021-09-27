@@ -247,10 +247,9 @@ class NCEPModelParameters(ExamplePartMaker):
 
     def __call__(self, year, example):
         model = example["model"]
-        if model.forecast_monthday in ["0102", "1231"]:
-            # These forecasts have no direct association in the NCEP forecasts.
-            return None
-        elif (year >= 1999 and year <= 2010) or year == 2020:
+        if (year >= 1999 and year <= 2010) and model.forecast_monthday not in ['0102', '1231']:
+            return self.make_ncep_example_part(year, example)
+        elif year == 2020:
             return self.make_ncep_example_part(year, example)
         else:
             return None
@@ -369,13 +368,15 @@ def read_raw_obs(t2m_file, pr_file, preprocess=lambda x: x):
 
 def ecmwf_datestring_to_ncep_datestring(datestring, set="train"):
     """For an ecmwf datestring, output the corresponding ncep forecast datestring."""
+
+    if set == "test":
+        # The datestrings are fine in the test set. It's only in the train set that
+        # we have problems.
+        return datestring
+
     year, month, day = int(datestring[:4]), int(datestring[4:6]), int(datestring[6:])
     index = ECMWF_FORECASTS.index((month, day))
-
-    if set == "train":
-        output_year = 2010
-    else:
-        output_year = 2020
+    output_year = 2010
 
     if index in [0, 52]:
         # Some forecasts have no ncep correspondence.

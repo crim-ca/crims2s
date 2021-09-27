@@ -1,11 +1,15 @@
 """PyTorch dataset for S2S data."""
 
+import logging
 import netCDF4
 import numpy as np
 import pathlib
 from typing import Iterable, Union
 import torch
 import xarray as xr
+
+
+_logger = logging.getLogger(__name__)
 
 
 class TransformedDataset(torch.utils.data.Dataset):
@@ -60,6 +64,7 @@ class S2SDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         f = self.files[idx]
+        _logger.debug(f"Opening example: {f}")
 
         groups_to_read = ["/obs", "/terciles", "/edges", "/model_parameters"]
 
@@ -71,12 +76,22 @@ class S2SDataset(torch.utils.data.Dataset):
 
         example = {k[1:]: xr.open_dataset(f, group=k) for k in groups_to_read}
 
-        if "eccc_parameters" in netcdf_file_groups(f):
+        groups = netcdf_file_groups(f)
+        if "eccc_parameters" in groups:
             example["eccc_available"] = True
             example["eccc_parameters"] = xr.open_dataset(f, group="eccc_parameters")
         else:
             example["eccc_available"] = False
             example["eccc_parameters"] = xr.full_like(
+                example["model_parameters"], np.nan
+            )
+
+        if "ncep_parameters" in groups:
+            example["ncep_available"] = True
+            example["ncep_parameters"] = xr.open_dataset(f, group="ncep_parameters")
+        else:
+            example["ncep_available"] = False
+            example["ncep_parameters"] = xr.full_like(
                 example["model_parameters"], np.nan
             )
 
