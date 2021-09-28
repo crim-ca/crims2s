@@ -1,17 +1,21 @@
 defaults:
-- dataset: eccc
+- dataset: ncep
 - module: tercile
-- model: emos_eccc_normalcubenormal
+- model: emos_eccc_rolling
 - optimizer: spec_emos
 - transform: emos_cube
 
 dataset:
   include_features: False
-  validate_from: 2016
+  val_years: 
+    - 2016
+    - 2017
   end_year: 2018
 batch_size: 16
 trainer:
   accumulate_grad_batches: 1
+
+rolling_window_size: 3
 
 early_stopping:
   patience: 5

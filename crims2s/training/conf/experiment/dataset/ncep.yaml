@@ -6,3 +6,4 @@ val_years:
   - 2019
 end_year: 2020  # Excluded.
 index:
+ncep_filter: False  # Provide the option to filter our runs 0102 and 1231 because we don't have ncep data for those.

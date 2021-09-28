@@ -1,0 +1,13 @@
+_target_: crims2s.training.model.util.DistributionModelAdapter
+model: 
+  _target_: crims2s.training.model.emos.TempPrecipEMOS
+  t2m_model:
+    _target_: crims2s.training.model.RollingWindowNormalEMOSModel
+    window_size: ${experiment.rolling_window_size}
+    loc_key: model_parameters_t2m_mu
+    scale_key: model_parameters_t2m_sigma
+  tp_model:
+    _target_: crims2s.training.model.RollingWindowNormalEMOSModel
+    window_size: ${experiment.rolling_window_size}
+    loc_key: model_parameters_tp_cube_root_mu
+    scale_key: model_parameters_tp_cube_root_sigma

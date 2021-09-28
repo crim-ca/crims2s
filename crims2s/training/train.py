@@ -21,6 +21,19 @@ class ModelCheckpoint(pl_callbacks.ModelCheckpoint):
         return super().on_save_checkpoint(trainer, pl_module, checkpoint)
 
 
+class CompositeFilter:
+    def __init__(self, filters):
+        self.filters = filters
+
+    def __call__(self, x):
+        if self.filters:
+            for f in self.filters:
+                if not f(x):
+                    return False
+
+        return True
+
+
 def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 
@@ -40,16 +53,12 @@ def make_datasets(dataset_cfg, transform_cfg):
         _logger.info("Targetting monthday %s", label)
         filter_lambdas.append(lambda x: x.endswith(label))
 
-    if dataset_cfg.ncep_filter == True:
+    if "ncep_filter" in dataset_cfg and dataset_cfg.ncep_filter == True:
         filter_lambdas.append(
             lambda x: not (x.endswith("0102.nc") or x.endswith("1231.nc"))
         )
 
-    def name_filter(x):
-        if filter_lambdas:
-            return all([f(x) for f in filter_lambdas])
-        else:
-            return True
+    name_filter = CompositeFilter(filter_lambdas)
 
     train_dataset = TransformedDataset(
         S2SDataset(

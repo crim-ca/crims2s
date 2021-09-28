@@ -1,5 +1,5 @@
 defaults:
-- dataset: lean
+- dataset: ncep
 - module: tercile
 - model: emos_normalcubenormal
 - optimizer: spec_emos
@@ -7,9 +7,17 @@ defaults:
 
 dataset:
   include_features: False
+  val_years: 
+    - 2010
+    - 2017
+    - 2019
+  end_year: 2020
 batch_size: 16
 trainer:
   accumulate_grad_batches: 1
+
+rolling_window_size: 3
+
 
 early_stopping:
   patience: 5

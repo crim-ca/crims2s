@@ -1,8 +1,10 @@
 import collections.abc
-from typing import Iterable
+
 import torch
 import torch.nn as nn
 import numpy as np
+
+from typing import Mapping, TypeVar, Callable, Iterable, Hashable
 
 from ...util import ECMWF_FORECASTS
 
@@ -10,14 +12,8 @@ from ...util import ECMWF_FORECASTS
 class PytorchMultiplexer(nn.Module):
     """Model multiplexer that only works on pytorch tensor inputs."""
 
-    def __init__(self, key, models):
+    def __init__(self, models):
         super().__init__()
-
-        if isinstance(key, str):
-            self.key_fn = lambda x: x[key]
-        else:
-            self.key_fn = key
-
         self.models = nn.ModuleDict(models)
 
     def forward(self, key, *args):
@@ -40,11 +36,49 @@ class PytorchMultiplexer(nn.Module):
             return model(*args)
 
 
+class PytorchRolllingWindowMultiplexer(nn.Module):
+    """Model multiplexer that, for a given key, runs a rolling window of models.
+    
+    The models_of_key callable gives the list of models that apply to a given key.
+    For instance, if we want to call model 3 with a rolling window of two, then
+    model_of_key(3) could return [1,2,3,4,5]."""
+
+    def __init__(
+        self,
+        models_of_key: Callable[[str], Iterable[str]],
+        models: Mapping[str, nn.Module],
+    ):
+        super().__init__()
+
+        self.models_of_key = models_of_key
+        self.models = nn.ModuleDict(models)
+
+    def forward(self, key, *args):
+        if isinstance(key, str):
+            return self._compute_one_example(key, *args)
+        elif isinstance(key, collections.abc.Iterable):
+            outputs = []
+            for i, k in enumerate(key):
+                unbatched_args = [a[i] for a in args]
+                outputs.append(self._compute_one_example(k, *unbatched_args))
+
+            return torch.stack(outputs, dim=0)
+        else:
+            raise RuntimeError("Unregognized key type.")
+
+    def _compute_one_example(self, key: str, *args):
+        model_keys = self.models_of_key(key)
+        models = [self.models[k] for k in model_keys]
+        outputs = torch.stack([m(*args) for m in models], dim=0)
+
+        return outputs.mean(dim=0)
+
+
 class MonthlyMultiplexer(PytorchMultiplexer):
     def __init__(self, cls, *args, **kwargs):
         monthly_models = {f"{month:02}": cls(*args, **kwargs) for month in range(1, 13)}
 
-        super().__init__("month", monthly_models)
+        super().__init__(monthly_models)
 
 
 class WeeklyMultiplexer(PytorchMultiplexer):
@@ -52,50 +86,32 @@ class WeeklyMultiplexer(PytorchMultiplexer):
         monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
         weekly_models = {monthday: cls(*args, **kwargs) for monthday in monthdays}
 
-        super().__init__("monthday", weekly_models)
+        super().__init__(weekly_models)
 
 
-class ModelMultiplexer(nn.Module):
-    """Dispatch the training examples to multiple models depending on the example.
-    For instance, we could use this to use a different model for every monthday forecast.
+class WeeklyRollingWindowMultiplexer(PytorchRolllingWindowMultiplexer):
+    def __init__(self, window_size, cls, *args, **kwargs):
+        self.window_size = window_size
+        self.monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
 
-    Because it uses an arbitraty model for every sample, this module does not support batching.
-    To use it, it is recommended to disable automatic batching on the dataloader."""
+        weekly_models = {monthday: cls(*args, **kwargs) for monthday in self.monthdays}
 
-    def __init__(self, key, models):
-        """Args:
-            key: If a str, used as a key to fetch the model name from the example dict.
-                 If a callable, called on the example and should return to model name to use.
-            models: A mapping from model names to model instances. They keys should correspond to what is returned when applying key on the example."""
-        super().__init__()
+        super().__init__(self.models_of_key, weekly_models)
 
-        if isinstance(key, str):
-            self.key_fn = lambda x: x[key]
-        else:
-            self.key_fn = key
+    def models_of_key(self, key):
+        left_lookup = self.window_size // 2
+        right_lookup = self.window_size // 2 + 1
 
-        self.models = nn.ModuleDict(models)
+        padded_monthdays = [
+            *self.monthdays[-left_lookup:],
+            *self.monthdays,
+            *self.monthdays[:right_lookup],
+        ]
 
-    def forward(self, example):
-        model_name = self.key_fn(example)
-        model = self.models[model_name]
+        i = self.monthdays.index(key)
+        model_keys = padded_monthdays[i : i + self.window_size]
 
-        return model(example)
-
-
-class WeeklyModel(ModelMultiplexer):
-    def __init__(self, cls, **kwargs):
-        monthdays = [f"{m:02}{d:02}" for m, d in ECMWF_FORECASTS]
-        weekly_models = {monthday: cls(**kwargs) for monthday in monthdays}
-
-        super().__init__("monthday", weekly_models)
-
-
-class MonthlyModel(ModelMultiplexer):
-    def __init__(self, cls, **kwargs):
-        monthly_models = {f"{month:02}": cls(**kwargs) for month in range(1, 13)}
-
-        super().__init__(lambda x: x["monthday"][:2], monthly_models)
+        return model_keys
 
 
 def compute_edges_cdf_from_distribution(distribution, edges, regularization=0.0):

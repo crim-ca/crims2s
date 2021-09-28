@@ -1,5 +1,8 @@
 dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-23-eccc
 include_features: True
-val_years: range(2017,2020)
+val_years: 
+  - 2017
+  - 2018
+  - 2019
 end_year: 2020  # Excluded.
 index:

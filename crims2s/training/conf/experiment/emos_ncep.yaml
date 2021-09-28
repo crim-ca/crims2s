@@ -1,18 +1,22 @@
 defaults:
 - dataset: ncep
 - module: tercile
-- model: emos_ncep_normalcubenormal
+- model: emos_ncep_rolling
 - optimizer: spec_emos
 - transform: emos_cube
 
 dataset:
   include_features: False
-  validate_from: 2010
+  val_years: 
+    - 2010
   end_year: 2011
   ncep_filter: True
 batch_size: 16
 trainer:
   accumulate_grad_batches: 1
+
+rolling_window_size: 3
+
 
 early_stopping:
   patience: 5
