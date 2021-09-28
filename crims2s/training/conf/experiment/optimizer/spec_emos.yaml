@@ -5,7 +5,7 @@ _recursive_: False
 _convert_: partial
 optim_spec:
   - _target_: torch.optim.Adam
-    lr: 5e-4
+    lr: 2e-4
     params:
       - _regex_: 't2m_model'
     scheduler: 
@@ -14,7 +14,7 @@ optim_spec:
       factor: 0.1
       patience: 5
   - _target_: torch.optim.Adam
-    lr: 5e-3
+    lr: 2e-3
     params:
       - _regex_: 'tp_model'
     scheduler: 

@@ -1,9 +1,13 @@
 defaults:
 - dataset: ncep
 - module: tercile
-- model: emos_normalcubenormal
+- model: emos_ecmwf_rolling
 - optimizer: spec_emos
 - transform: emos_cube
+
+hydra:
+  launcher:
+    timeout_min: 120
 
 dataset:
   include_features: False
@@ -20,4 +24,4 @@ rolling_window_size: 3
 
 
 early_stopping:
-  patience: 5
+  patience: 10
