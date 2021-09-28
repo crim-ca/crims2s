@@ -24,8 +24,10 @@ class ModelCheckpoint(pl_callbacks.ModelCheckpoint):
 def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 
-    train_years = list(range(2000, dataset_cfg.validate_from))
-    val_years = list(range(dataset_cfg.validate_from, dataset_cfg.end_year))
+    train_years = sorted(
+        list(set(range(2000, dataset_cfg.end_year)) - set(dataset_cfg.val_years))
+    )
+    val_years = sorted(list(dataset_cfg.val_years))
 
     _logger.info(f"train year: {train_years}")
     _logger.info(f"val years: {val_years}")

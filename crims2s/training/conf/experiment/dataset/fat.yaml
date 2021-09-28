@@ -1,5 +1,5 @@
 dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-08-w-features
 include_features: True
-validate_from: 2018
+val_years: range(2018,2020)
 end_year: 2020  # Excluded.
 index:

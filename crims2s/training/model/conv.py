@@ -1,5 +1,7 @@
+import torch
 import torch.distributions
 import torch.nn as nn
+from typing import Tuple, Mapping
 
 from .bias import ModelParameterBiasCorrection
 from .util import DistributionModelAdapter
@@ -52,7 +54,7 @@ class ConvModel(nn.Module):
         self.conv_weeks_34 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
         self.conv_weeks_56 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
 
-    def forward(self, input):
+    def forward(self, input: torch.tensor):
         x = self.act1(self.bn1(self.conv1(input)))
 
         for b in self.blocks:
@@ -77,7 +79,9 @@ class DistributionConvPostProcessing(nn.Module):
         else:
             self.debias_model = None
 
-    def forward(self, batch):
+    def forward(
+        self, batch: Mapping
+    ) -> Tuple[torch.distributions.Distribution, torch.distributions.Distribution]:
         if self.debias_model is not None:
             batch = self.debias_model(batch)
 
@@ -106,7 +110,7 @@ class DistributionConvPostProcessing(nn.Module):
         return t2m_dist, tp_dist
 
 
-class ConvPostProcessing(DistributionModelAdapter):
+class TercilesConvPostProcessing(DistributionModelAdapter):
     def __init__(self, in_features, n_blocks, embedding_size, debias=False):
         conv_model = ConvModel(in_features, 4, n_blocks, embedding_size)
         distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)

@@ -1,6 +1,7 @@
 """Models that use deep learning to perform a bayesian update on the prior and thus make
 a better forecast."""
 
+from xarray.core import variable
 from crims2s.training.model.emos import NormalCubeNormalEMOS
 import numpy as np
 import torch
@@ -248,42 +249,55 @@ class ECMWFModelWrapper(DistributionModelAdapter):
         super().__init__(model)
 
 
-class ECCCModelWrapper(DistributionModelAdapter):
-    def __init__(self):
-        model = NormalCubeNormalEMOS(biweekly=True, prefix="eccc_parameters")
+class OptionnalModelWrapper(DistributionModelAdapter):
+    def __init__(self, parameters_prefix, available_key):
+        self.parameters_prefix = parameters_prefix
+        self.available_key = available_key
+
+        model = NormalCubeNormalEMOS(biweekly=True, prefix=parameters_prefix)
         super().__init__(model)
 
     def forward(self, batch):
-        eccc_available = batch["eccc_available"]
+        available = batch[self.available_key]
 
-        if eccc_available.all():
+        if available.all():
             return super().forward(batch)
 
-        # Assume uniform distribution. If eccc forecast is available, replace
-        # uniform prior with the eccc forecast.
-        t2m = torch.full_like(batch["terciles_t2m"], 1.0 / 3.0)
-        tp = torch.full_like(batch["terciles_tp"], 1.0 / 3.0)
+        # Assume fully undefined forcast. If forecast is available, replace nans with
+        # forecast.
+        t2m = torch.full_like(batch["terciles_t2m"], np.nan)
+        tp = torch.full_like(batch["terciles_tp"], np.nan)
 
-        if not eccc_available.any():
+        if not available.any():
             return t2m, tp
 
         # The mixed case is the trickyest.
 
         # Make a new batch where there only is eccc available examples.
-        eccc_available_batch = {}
+        available_batch = {}
         for k in batch.keys():
-            if k.startswith("eccc_parameters") or k.startswith("edges_"):
-                eccc_available_batch[k] = batch[k][eccc_available]
+            if k.startswith(self.parameters_prefix) or k.startswith("edges_"):
+                available_batch[k] = batch[k][available]
 
             if k in ["month", "monthday", "year"]:
-                eccc_available_batch[k] = np.array(batch[k])[eccc_available.cpu()]
+                available_batch[k] = np.array(batch[k])[available.cpu()]
 
-        t2m_eccc, tp_eccc = super().forward(eccc_available_batch)
+        t2m_eccc, tp_eccc = super().forward(available_batch)
 
-        t2m[eccc_available] = t2m_eccc
-        tp[eccc_available] = tp_eccc
+        t2m[available] = t2m_eccc
+        tp[available] = tp_eccc
 
         return t2m, tp
+
+
+class ECCCModelWrapper(OptionnalModelWrapper):
+    def __init__(self):
+        super().__init__("eccc_parameters", "eccc_available")
+
+
+class NCEPModelWrapper(OptionnalModelWrapper):
+    def __init__(self):
+        super().__init__("ncep_parameters", "ncep_available")
 
 
 class ClimatologyModel(nn.Module):
@@ -487,7 +501,7 @@ class CommonTrunk(nn.Module):
 
 class VariableBranch(nn.Module):
     def __init__(
-        self, embedding_size, n_blocks=1, width=1, depth=1, dropout=0.0, out_features=2
+        self, embedding_size, n_blocks=1, width=3, depth=1, dropout=0.0, out_features=2
     ):
         super().__init__()
 
@@ -567,18 +581,26 @@ class BiheadedWeightModel(nn.Module):
         global_branch=True,
         dropout=0.0,
         out_features=2,
+        moments=False,
+        variable_branch_blocks=1,
     ):
         super().__init__()
 
         self.global_branch = global_branch
 
-        self.projection = Projection(in_features, embedding_size)
+        self.projection = Projection(in_features, embedding_size, moments=moments)
         self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
         self.t2m_branch = VariableBranch(
-            embedding_size, dropout=dropout, out_features=out_features
+            embedding_size,
+            dropout=dropout,
+            out_features=out_features,
+            n_blocks=variable_branch_blocks,
         )
         self.tp_branch = VariableBranch(
-            embedding_size, dropout=dropout, out_features=out_features
+            embedding_size,
+            dropout=dropout,
+            out_features=out_features,
+            n_blocks=variable_branch_blocks,
         )
 
         if self.global_branch:

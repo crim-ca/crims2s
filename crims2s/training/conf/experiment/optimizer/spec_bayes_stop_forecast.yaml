@@ -12,8 +12,8 @@ optim_spec:
       - _regex_: forecast_model(.*)tp_model
         lr: 1e-3
       - _regex_: weight_model
-        lr: 1e-4
-        #weight_decay: 1e-5
+        lr: 1e-6
+        weight_decay: 1e-5
     scheduler:
       _target_: crims2s.training.optim.three_groups_scheduler
       freeze_forecast_epoch: ${experiment.weights_only_epoch}
