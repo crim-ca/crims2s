@@ -52,17 +52,38 @@ class TileWeightModel(nn.Module):
 
 
 class LinearWeightModel(nn.Module):
-    def __init__(self, in_features):
+    def __init__(self, in_features, n_models, moments=True):
         super().__init__()
 
-        self.lin = nn.parameter.Parameter(torch.rand(2, 121, 240, 14))
-        self.bias = nn.parameter.Parameter(torch.rand(2, 121, 240))
+        self.moments = moments
 
-    def forward(self, example):
-        example = example.mean(dim=-2).mean(dim=1)
-        remapped = (self.lin * example).sum(dim=-1) + self.bias
+        in_features = 2 * in_features if moments else in_features
 
-        return remapped
+        self.t2m_weights = nn.parameter.Parameter(
+            torch.rand(n_models, 2, 121, 240, in_features)
+        )
+        self.t2m_bias = nn.parameter.Parameter(torch.rand(n_models, 2, 121, 240))
+        self.tp_weights = nn.parameter.Parameter(
+            torch.rand(n_models, 2, 121, 240, in_features)
+        )
+        self.tp_bias = nn.parameter.Parameter(torch.rand(n_models, 2, 121, 240))
+
+    def forward(self, features):
+        x = features.mean(dim=1)  # Collapse the time dimension.
+
+        # Compute mean and std of features across members.
+        if self.moments:
+            # Use average and STD of members as features.
+            x = torch.cat([x.mean(dim=-2), x.std(dim=-2)], dim=-1)
+        else:
+            # Select first member.
+            x = features[..., 0, :]
+
+        # Dimension keys: Batch, Time, Leadtime, lAtitude, lOngitude, Channel, Model
+        t2m = torch.einsum("baoc,mtaoc->bmtao", x, self.t2m_weights) + self.t2m_bias
+        tp = torch.einsum("baoc,mtaoc->bmtao", x, self.tp_weights) + self.tp_bias
+
+        return t2m, tp
 
 
 class ConvolutionalWeightModel(nn.Module):

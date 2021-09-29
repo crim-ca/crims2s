@@ -10,4 +10,6 @@ forecast_models:
     window_size: 20
 weight_model:
   _target_: crims2s.training.model.bayes.LinearWeightModel
+  in_features: 17
   n_models: 4
+  moments: True

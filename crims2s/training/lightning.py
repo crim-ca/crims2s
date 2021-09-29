@@ -339,15 +339,11 @@ class S2SBayesModelModule(S2STercilesModule):
         optimizer,
         regularization: float,
         regularization_scheme="prior",
-        model_only_epochs=0,
-        weight_only_at_epoch=None,
         **kwargs,
     ):
         super().__init__(model, optimizer, **kwargs)
         self.regularization = regularization
         self.regularization_scheme = regularization_scheme
-        self.model_only_epochs = model_only_epochs
-        self.weight_only_at_epoch = weight_only_at_epoch
 
         self.regularization_scheme = regularization_scheme_factory(
             regularization_scheme

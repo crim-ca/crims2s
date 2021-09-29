@@ -1,17 +1,15 @@
-from crims2s.transform import CompositeTransform
 import hydra
 import logging
-import numpy as np
 import os
-import pathlib
 import torch
 import tqdm
 import xarray as xr
 
 from ..dataset import S2SDataset, TransformedDataset
-from ..transform import ExampleToPytorch
+from ..transform import ExampleToPytorch, CompositeTransform
 from ..util import ECMWF_FORECASTS, collate_with_xarray
 from .lightning import S2SBayesModelModule, S2STercilesModule
+from .util import find_checkpoint_file
 
 _logger = logging.getLogger(__name__)
 
@@ -82,13 +80,6 @@ def example_to_cuda(example):
             new_example[k] = example[k]
 
     return new_example
-
-
-def find_checkpoint_file(checkpoint_dir):
-    checkpoint_dir = pathlib.Path(checkpoint_dir)
-    checkpoint_files = sorted(list(checkpoint_dir.rglob("*.ckpt")))
-
-    return checkpoint_files[-1]
 
 
 @hydra.main(config_path="conf", config_name="infer")

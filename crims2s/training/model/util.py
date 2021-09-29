@@ -1,4 +1,5 @@
 import collections.abc
+from crims2s.training.util import find_checkpoint_file
 
 import torch
 import torch.nn as nn
@@ -172,3 +173,18 @@ class DistributionModelAdapter(nn.Module):
         tp_terciles = self.tp_to_terciles(tp_dist, edges_tp)
 
         return t2m_terciles, tp_terciles
+
+
+class ModelWithCheckpoint(nn.Module):
+    def __init__(self, model: nn.Module, checkpoint_path, remove_prefix="model."):
+        super().__init__()
+        self.model = model
+
+        checkpoint_file = find_checkpoint_file(checkpoint_path)
+        state_dict = torch.load(checkpoint_file)["state_dict"]
+
+        state_dict = {k[len(remove_prefix) :]: v for k, v in state_dict.items()}
+        self.model.load_state_dict(state_dict)
+
+    def forward(self, *args, **kwargs):
+        return self.model.forward(*args, **kwargs)

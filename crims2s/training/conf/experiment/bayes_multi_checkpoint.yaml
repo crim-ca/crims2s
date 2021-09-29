@@ -1,0 +1,23 @@
+defaults:
+  - dataset: ncep
+  - module: bayes
+  - model: bayes_multi_checkpoint
+  - optimizer: spec_bayes_noforecast
+  - transform: geography
+
+dataset:
+  include_features: True
+  val_years: 
+    - 2010
+    - 2017
+    - 2019
+  end_year: 2020
+early_stopping:
+  patience: 10
+
+experiment:
+  weights_only_epoch: 
+
+batch_size: 4
+trainer:
+  accumulate_grad_batches: 1
