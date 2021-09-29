@@ -1,14 +1,14 @@
 """Models that use deep learning to perform a bayesian update on the prior and thus make
 a better forecast."""
 
-from xarray.core import variable
-from crims2s.training.model.emos import NormalCubeNormalEMOS
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .bias import ModelParameterBiasCorrection
+from .emos import NormalCubeNormalEMOS, RollingWindowEMOS
 from .util import DistributionModelAdapter, DistributionToTerciles
 
 
@@ -33,12 +33,22 @@ class TrivialWeightModel(nn.Module):
 
 
 class TileWeightModel(nn.Module):
-    def __init__(self, initial_w=1.0):
+    def __init__(self, n_models=4):
         super().__init__()
-        self.w = nn.parameter.Parameter(torch.full((2, 121, 240), initial_w))
+        self.t2m_weights = nn.parameter.Parameter(torch.ones((n_models, 2, 121, 240)))
+        self.tp_weights = nn.parameter.Parameter(torch.ones((n_models, 2, 121, 240)))
 
-    def forward(self, example):
-        return self.w
+    def forward(self, batch_size):
+        # The same weights are shared across the batch, but we fake a batch dimension
+        # nontheless so that the output of this model matches the output of other models.
+        t2m_weights = torch.unsqueeze(self.t2m_weights, dim=0).repeat(
+            (batch_size, 1, 1, 1, 1)
+        )
+        tp_weights = torch.unsqueeze(self.tp_weights, dim=0).repeat(
+            (batch_size, 1, 1, 1, 1)
+        )
+
+        return t2m_weights, tp_weights
 
 
 class LinearWeightModel(nn.Module):
@@ -243,18 +253,15 @@ class BayesianUpdateModel(nn.Module):
         return self.weight_model.parameters()
 
 
-class ECMWFModelWrapper(DistributionModelAdapter):
-    def __init__(self):
-        model = NormalCubeNormalEMOS(biweekly=True)
-        super().__init__(model)
-
-
 class OptionnalModelWrapper(DistributionModelAdapter):
-    def __init__(self, parameters_prefix, available_key):
+    """Wrap a model for which we don't have a full dataset. The examples contain a key
+    named `available_key` which tells us if the example is available or not. For 
+    instance, if inside the example `example['eccc_available'] == False` then we 
+    know that ECCC is not available for that example and we have to react accordingly."""
+
+    def __init__(self, model, parameters_prefix, available_key):
         self.parameters_prefix = parameters_prefix
         self.available_key = available_key
-
-        model = NormalCubeNormalEMOS(biweekly=True, prefix=parameters_prefix)
         super().__init__(model)
 
     def forward(self, batch):
@@ -290,14 +297,47 @@ class OptionnalModelWrapper(DistributionModelAdapter):
         return t2m, tp
 
 
+class ECMWFModelWrapper(DistributionModelAdapter):
+    def __init__(self):
+        model = NormalCubeNormalEMOS(biweekly=True)
+        super().__init__(model)
+
+
+class RollingECMWFWrapper(DistributionModelAdapter):
+    def __init__(self, window_size=20):
+        model = RollingWindowEMOS(window_size=window_size)
+        super().__init__(model)
+
+
 class ECCCModelWrapper(OptionnalModelWrapper):
     def __init__(self):
-        super().__init__("eccc_parameters", "eccc_available")
+        parameters_prefix = "eccc_parameters"
+        model = NormalCubeNormalEMOS(biweekly=True, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "eccc_available")
+
+
+class RollingECCCWrapper(OptionnalModelWrapper):
+    """Wrap a rolling window ECCC EMOS model such that it is compatible with our 
+    dataset dictinnary."""
+
+    def __init__(self, window_size=20):
+        parameters_prefix = "eccc_parameters"
+        model = RollingWindowEMOS(window_size, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "eccc_available")
 
 
 class NCEPModelWrapper(OptionnalModelWrapper):
     def __init__(self):
-        super().__init__("ncep_parameters", "ncep_available")
+        parameters_prefix = "ncep_parameters"
+        model = NormalCubeNormalEMOS(biweekly=True, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "ncep_available")
+
+
+class RollingNCEPWrapper(OptionnalModelWrapper):
+    def __init__(self, window_size=20):
+        parameters_prefix = "ncep_parameters"
+        model = RollingWindowEMOS(window_size, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "ncep_available")
 
 
 class ClimatologyModel(nn.Module):
@@ -370,8 +410,10 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         tp_nan_mask = tp_forecasts.isnan().any(dim=2)
         tp_forecasts = torch.nan_to_num(tp_forecasts, 0.0)
 
+        batch_size = len(example["terciles_t2m"])
+        features_or_batch_size = example.get("features_features", batch_size)
         t2m_forecast_weight, tp_forecast_weight = self.weight_model(
-            example["features_features"]
+            features_or_batch_size
         )
 
         t2m_weights = self.make_weights(t2m_forecast_weight, t2m_nan_mask)
@@ -380,16 +422,6 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         # Meaning of the keys: Batch, Model (prior or ecmwf or eccc), Category, Lead time, lAtitude, lOngitude
         t2m = torch.einsum("bmclao,bmlao->bclao", t2m_forecasts, t2m_weights)
         tp = torch.einsum("bmclao,bmlao->bclao", tp_forecasts, tp_weights)
-
-        # torch.transpose(t2m, 0, 1)[:, t2m_nan_mask] = np.nan
-        # torch.transpose(tp, 0, 1)[:, tp_nan_mask] = np.nan
-
-        # t2m_prior_weights = torch.where(
-        #     ~t2m_nan_mask, t2m_weights[1], torch.zeros_like(t2m_weights[1])
-        # )
-        # tp_prior_weights = torch.where(
-        #     ~tp_nan_mask, tp_weights[1], torch.zeros_like(tp_weights[1])
-        # )
 
         t2m_nan_mask = example["terciles_t2m"].isnan().any(dim=1)
         tp_nan_mask = example["terciles_tp"].isnan().any(dim=1)

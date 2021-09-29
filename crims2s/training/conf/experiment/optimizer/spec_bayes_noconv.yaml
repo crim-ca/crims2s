@@ -1,0 +1,19 @@
+# This dictionary is not meant to be called with hydra.instantiate.
+# It can be called by crims2s.training.optim_spec.create_optim
+_target_: crims2s.training.optim_spec.create_optim
+_recursive_: False
+_convert_: partial
+optim_spec:
+  - _target_: torch.optim.Adam
+    lr: 1e-3
+    params:
+      - _regex_: forecast_model(.*)t2m_model
+        lr: 2e-4
+      - _regex_: forecast_model(.*)tp_model
+        lr: 2e-3
+      - _regex_: weight_model
+        lr: 1e-3
+    scheduler:
+      _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+      _monitor_: val_loss
+      patience: 5

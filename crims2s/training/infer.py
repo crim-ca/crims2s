@@ -120,7 +120,7 @@ def cli(cfg):
             cfg.test_dataset_dir,
             years=years,
             name_filter=name_filter,
-            include_features=True,
+            include_features=cfg.experiment.dataset.load_features,
         ),
         transform,
     )

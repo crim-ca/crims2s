@@ -122,6 +122,20 @@ class NormalCubeNormalEMOS(TempPrecipEMOS):
         )
 
 
+class RollingWindowEMOS(TempPrecipEMOS):
+    def __init__(self, window_size=20, prefix="model_parameters"):
+        t2m_model = RollingWindowNormalEMOSModel(
+            window_size, f"{prefix}_t2m_mu", f"{prefix}_t2m_sigma",
+        )
+        tp_model = RollingWindowNormalEMOSModel(
+            window_size, f"{prefix}_tp_cube_root_mu", f"{prefix}_tp_cube_root_sigma",
+        )
+
+        super().__init__(
+            t2m_model, tp_model,
+        )
+
+
 class MonthlyLinearModel(MonthlyMultiplexer):
     def __init__(self, *args, **kwargs):
         super().__init__(LinearModel, *args, **kwargs)

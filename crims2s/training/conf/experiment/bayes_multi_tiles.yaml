@@ -1,0 +1,22 @@
+defaults:
+  - dataset: ncep
+  - module: bayes
+  - model: bayes_multi_tile
+  - optimizer: spec_bayes_noconv
+  - transform: emos_cube
+
+dataset:
+  include_features: False
+early_stopping:
+  patience: 10
+
+
+forecast_only_epochs: 5  # Only train forecast model for the first few epochs.
+
+callbacks:
+  - _target_: crims2s.training.callback.BayesForecastFreezeUnfreezeCallback
+    unfreeze_weights_epoch: ${experiment.forecast_only_epochs}
+
+batch_size: 16
+trainer:
+  accumulate_grad_batches: 1
