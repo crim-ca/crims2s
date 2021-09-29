@@ -1,0 +1,13 @@
+_target_: crims2s.training.model.bayes.MultiCenterBayesianUpdateModel
+bias_correction: False
+forecast_models:
+  - _target_: crims2s.training.model.bayes.ClimatologyModel
+  - _target_: crims2s.training.model.bayes.RollingECMWFWrapper
+    window_size: 20
+  - _target_: crims2s.training.model.bayes.RollingECCCWrapper
+    window_size: 20
+  - _target_: crims2s.training.model.bayes.RollingNCEPWrapper
+    window_size: 20
+weight_model:
+  _target_: crims2s.training.model.bayes.LinearWeightModel
+  n_models: 4

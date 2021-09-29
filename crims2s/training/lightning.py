@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
-from .model.bayes import BayesianUpdateModel
 from .model.util import DistributionToTerciles
 
 
@@ -336,7 +335,7 @@ def regularization_scheme_factory(name: str):
 class S2SBayesModelModule(S2STercilesModule):
     def __init__(
         self,
-        model: BayesianUpdateModel,
+        model,
         optimizer,
         regularization: float,
         regularization_scheme="prior",
