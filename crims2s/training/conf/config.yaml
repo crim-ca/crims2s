@@ -1,5 +1,5 @@
 defaults:
-  - experiment: bayes_conv
+  - experiment: bayes_multi_checkpoint
   - backend: singlegpu
 
 hydra:
