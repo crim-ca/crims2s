@@ -5,11 +5,15 @@ import pytorch_lightning as pl
 import pytorch_lightning.callbacks as pl_callbacks
 import pytorch_lightning.loggers as loggers
 import torch
+import torch.multiprocessing
+
 
 from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
 
 _logger = logging.getLogger(__name__)
+
+torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 class ModelCheckpoint(pl_callbacks.ModelCheckpoint):
@@ -84,7 +88,7 @@ def make_datasets(dataset_cfg, transform_cfg):
     return train_dataset, val_dataset
 
 
-def run_experiment(cfg, num_workers=4, lr_find=False):
+def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
     train_dataset, val_dataset = make_datasets(cfg.dataset, cfg.transform)
     _logger.info(
         f"Length of datasets. Train: {len(train_dataset)}. Val: {len(val_dataset)}."
@@ -97,6 +101,7 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         num_workers=num_workers,
         shuffle=True,
         drop_last=False,
+        persistent_workers=True,
     )
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset,
@@ -104,6 +109,7 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         batch_sampler=None,
         num_workers=num_workers,
         drop_last=False,
+        persistent_workers=True,
     )
 
     model = hydra.utils.instantiate(cfg.model)
@@ -150,7 +156,10 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         logger=[tensorboard, mlflow],
         callbacks=callbacks,
         default_root_dir="./lightning/",
-        **cfg.trainer,
+        gpus=backend_cfg.gpus,
+        accelerator=backend_cfg.accelerator,
+        max_epochs=cfg.max_epochs,
+        accumulate_grad_batches=backend_cfg.accumulate_grad_batches,
     )
 
     if lr_find:
@@ -172,8 +181,15 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
 
 @hydra.main(config_path="conf", config_name="config")
 def cli(cfg):
+    if "env" in cfg and cfg.env is not None:
+        for key, value in cfg.env:
+            os.environ[key] = value
+
     run_experiment(
-        cfg.experiment, num_workers=int(cfg.num_workers), lr_find=cfg.lr_find
+        cfg.experiment,
+        cfg.backend,
+        num_workers=int(cfg.backend.num_workers),
+        lr_find=cfg.lr_find,
     )
 
 

@@ -18,6 +18,4 @@ early_stopping:
 experiment:
   weights_only_epoch: 
 
-batch_size: 4
-trainer:
-  accumulate_grad_batches: 1
+batch_size: 1

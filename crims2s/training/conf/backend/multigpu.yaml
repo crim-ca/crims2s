@@ -1,0 +1,6 @@
+num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
+accelerator: ddp
+gpus: 2
+accumulate_grad_batches: 1
+env:
+  - MKL_THREADING_LAYER: GNU
