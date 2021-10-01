@@ -7,6 +7,11 @@ defaults:
 
 dataset:
   include_features: True
+  val_years: 
+    - 2010
+    - 2017
+    - 2019
+  end_year: 2020
 early_stopping:
   patience: 10
 
