@@ -4,68 +4,68 @@ import torch.nn as nn
 from typing import Tuple, Mapping
 
 from .bias import ModelParameterBiasCorrection
+from .bayes import GlobalBranch, VariableBranch, CommonTrunk, Projection
 from .util import DistributionModelAdapter
 
 
-class ConvBlock(nn.Module):
-    def __init__(self, embedding_size):
+class ConvPostProcessingModel(nn.Module):
+    def __init__(
+        self,
+        in_features,
+        embedding_size,
+        global_branch=True,
+        dropout=0.0,
+        out_features=4,
+        moments=False,
+        variable_branch_blocks=3,
+    ):
         super().__init__()
 
-        self.conv1 = nn.Conv3d(
+        self.global_branch = global_branch
+
+        self.projection = Projection(in_features, embedding_size, moments=moments)
+        self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
+        self.t2m_branch = VariableBranch(
             embedding_size,
-            embedding_size,
-            kernel_size=(3, 3, 3),
-            padding=(1, 1, 1),
-            padding_mode="circular",
+            dropout=dropout,
+            out_features=out_features,
+            n_blocks=variable_branch_blocks,
         )
-        self.act1 = nn.LeakyReLU()
-        self.conv2 = nn.Conv3d(
+        self.tp_branch = VariableBranch(
             embedding_size,
-            embedding_size,
-            kernel_size=(3, 3, 3),
-            padding=(1, 1, 1),
-            padding_mode="circular",
-        )
-        self.act2 = nn.LeakyReLU()
-
-        self.bn1 = nn.BatchNorm3d(embedding_size)
-        self.bn2 = nn.BatchNorm3d(embedding_size)
-
-    def forward(self, input):
-        x = input
-        x = self.act1(self.bn1(self.conv1(x)))
-        x = self.act2(self.bn2(self.conv2(x) + x))
-
-        return x
-
-
-class ConvModel(nn.Module):
-    def __init__(self, in_features, out_features, n_blocks, embedding_size):
-        super().__init__()
-
-        self.conv1 = nn.Conv3d(in_features, embedding_size, kernel_size=(1, 1, 1),)
-        self.act1 = nn.LeakyReLU()
-        self.bn1 = nn.BatchNorm3d(embedding_size)
-
-        self.blocks = nn.ModuleList(
-            [ConvBlock(embedding_size) for _ in range(n_blocks)]
+            dropout=dropout,
+            out_features=out_features,
+            n_blocks=variable_branch_blocks,
         )
 
-        self.conv_weeks_34 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
-        self.conv_weeks_56 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
+        if self.global_branch:
+            self.global_branch = GlobalBranch(embedding_size, embedding_size)
 
-    def forward(self, input: torch.tensor):
-        x = self.act1(self.bn1(self.conv1(input)))
+    def forward(self, x):
+        x = torch.transpose(x, 1, -1)  # Swap dims and depth.
 
-        for b in self.blocks:
-            x = b(x)
+        x = self.projection(x)
+        x = self.common_trunk(x)
 
-        x = x.mean(dim=-1)
+        if self.global_branch:
+            global_features = self.global_branch(x)
+            global_features = (
+                global_features.unsqueeze(dim=-1).unsqueeze(dim=-1).unsqueeze(dim=-1)
+            )
 
-        post_weeks_34 = self.conv_weeks_34(x)
-        post_weeks_56 = self.conv_weeks_56(x)
+            x_t2m = self.t2m_branch(x + global_features)
+            x_tp = self.tp_branch(x + global_features)
+        else:
+            x_t2m = self.t2m_branch(x)
+            x_tp = self.tp_branch(x)
 
-        return torch.stack([post_weeks_34, post_weeks_56], dim=-1)
+        # Every branch outputs 4 channels: mu w34, mu w56, std w34, std w56.
+        # Reshape accordingly.
+        batch_size = x_t2m.shape[0]
+        x_t2m = x_t2m.reshape(batch_size, 2, 121, 240, 2)
+        x_tp = x_tp.reshape(batch_size, 2, 121, 240, 2)
+
+        return x_t2m, x_tp
 
 
 class DistributionConvPostProcessing(nn.Module):
@@ -87,18 +87,18 @@ class DistributionConvPostProcessing(nn.Module):
 
         x = batch["features_features"]
 
-        x = x[..., 0, :]  # Grab the first member.
-        x = torch.transpose(x, 1, -1)  # Swap dims and depth.
+        t2m_post, tp_post = self.conv_model(x)
 
-        post_processing = torch.transpose(self.conv_model(x), 1, -1)
-
-        t2m_mu = batch["model_parameters_t2m_mu"] + post_processing[..., 0]
-        t2m_sigma = batch["model_parameters_t2m_sigma"] + post_processing[..., 1]
-
-        tp_mu = batch["model_parameters_tp_cube_root_mu"] + post_processing[..., 2]
-        tp_sigma = (
-            batch["model_parameters_tp_cube_root_sigma"] + post_processing[..., 3]
+        t2m_post, tp_post = (
+            torch.transpose(t2m_post, 1, -1),
+            torch.transpose(tp_post, 1, -1),
         )
+
+        t2m_mu = batch["model_parameters_t2m_mu"] + t2m_post[..., 0]
+        t2m_sigma = batch["model_parameters_t2m_sigma"] + t2m_post[..., 1]
+
+        tp_mu = batch["model_parameters_tp_cube_root_mu"] + tp_post[..., 0]
+        tp_sigma = batch["model_parameters_tp_cube_root_sigma"] + tp_post[..., 1]
 
         t2m_dist = torch.distributions.Normal(
             t2m_mu, torch.clip(t2m_sigma, min=self.regularization)
@@ -111,8 +111,16 @@ class DistributionConvPostProcessing(nn.Module):
 
 
 class TercilesConvPostProcessing(DistributionModelAdapter):
-    def __init__(self, in_features, n_blocks, embedding_size, debias=False):
-        conv_model = ConvModel(in_features, 4, n_blocks, embedding_size)
+    def __init__(
+        self, in_features, embedding_size, debias=False, moments=True, dropout=0.0
+    ):
+        conv_model = ConvPostProcessingModel(
+            in_features,
+            embedding_size,
+            moments=moments,
+            global_branch=True,
+            dropout=dropout,
+        )
         distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
 
         super().__init__(distribution_model)
