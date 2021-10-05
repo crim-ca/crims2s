@@ -18,13 +18,19 @@ class ConvPostProcessingModel(nn.Module):
         out_features=4,
         moments=False,
         variable_branch_blocks=3,
+        common_trunk_blocks=3,
+        global_stride=2,
+        global_dilation=1,
+        global_padding=1,
     ):
         super().__init__()
 
         self.global_branch = global_branch
 
         self.projection = Projection(in_features, embedding_size, moments=moments)
-        self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
+        self.common_trunk = CommonTrunk(
+            embedding_size, n_blocks=common_trunk_blocks, dropout=dropout
+        )
         self.t2m_branch = VariableBranch(
             embedding_size,
             dropout=dropout,
@@ -39,7 +45,13 @@ class ConvPostProcessingModel(nn.Module):
         )
 
         if self.global_branch:
-            self.global_branch = GlobalBranch(embedding_size, embedding_size)
+            self.global_branch = GlobalBranch(
+                embedding_size,
+                embedding_size,
+                stride=global_stride,
+                dilation=global_dilation,
+                padding=global_padding,
+            )
 
     def forward(self, x):
         x = torch.transpose(x, 1, -1)  # Swap dims and depth.
@@ -112,14 +124,25 @@ class DistributionConvPostProcessing(nn.Module):
 
 class TercilesConvPostProcessing(DistributionModelAdapter):
     def __init__(
-        self, in_features, embedding_size, debias=False, moments=True, dropout=0.0
+        self,
+        in_features,
+        embedding_size,
+        debias=False,
+        moments=True,
+        dropout=0.0,
+        global_stride=2,
+        global_dilation=1,
+        global_padding=1,
     ):
         conv_model = ConvPostProcessingModel(
             in_features,
             embedding_size,
             moments=moments,
-            global_branch=True,
             dropout=dropout,
+            global_branch=True,
+            global_stride=global_stride,
+            global_dilation=global_dilation,
+            global_padding=global_padding,
         )
         distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
 

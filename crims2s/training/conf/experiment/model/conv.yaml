@@ -3,3 +3,6 @@ in_features: 17
 embedding_size: 128
 debias: False
 dropout: 0.05
+global_dilation: 1
+global_padding: 1
+global_stride: 2

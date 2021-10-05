@@ -389,22 +389,29 @@ class VariableBranch(nn.Module):
 
 
 class GlobalBranchBlock(nn.Module):
-    def __init__(self, in_features, out_features, dilation=1):
+    def __init__(self, in_features, out_features, dilation=1, stride=2, padding=1):
         super().__init__()
 
         self.conv1 = nn.Conv2d(
             in_features,
             out_features,
             kernel_size=3,
-            stride=2,
+            stride=stride,
             bias=False,
             dilation=dilation,
+            padding=padding,
+            padding_mode="circular",
         )
         self.bn1 = nn.BatchNorm2d(out_features)
         self.act1 = nn.LeakyReLU()
 
         self.conv2 = nn.Conv2d(
-            out_features, out_features, kernel_size=3, bias=False, dilation=dilation,
+            out_features,
+            out_features,
+            kernel_size=3,
+            bias=False,
+            padding=padding,
+            padding_mode="circular",
         )
         self.bn2 = nn.BatchNorm2d(out_features)
         self.act2 = nn.LeakyReLU()
@@ -416,15 +423,21 @@ class GlobalBranchBlock(nn.Module):
 
 
 class GlobalBranch(nn.Module):
-    def __init__(self, in_features, out_features):
+    def __init__(self, in_features, out_features, stride=2, dilation=1, padding=1):
         super().__init__()
 
         size1 = max(out_features // 4, in_features)
         size2 = max(out_features // 2, in_features)
 
-        self.block1 = GlobalBranchBlock(in_features, size1)
-        self.block2 = GlobalBranchBlock(size1, size2)
-        self.block3 = GlobalBranchBlock(size2, out_features)
+        self.block1 = GlobalBranchBlock(
+            in_features, size1, stride=stride, dilation=dilation, padding=padding
+        )
+        self.block2 = GlobalBranchBlock(
+            size1, size2, stride=stride, dilation=dilation, padding=padding
+        )
+        self.block3 = GlobalBranchBlock(
+            size2, out_features, stride=stride, dilation=dilation, padding=padding
+        )
 
     def forward(self, x):
         x = x.mean(dim=-1)  # Flatten time dimension.
