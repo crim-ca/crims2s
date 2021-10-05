@@ -1,9 +1,9 @@
 defaults:
-  - dataset: lean
+  - dataset: ncep
   - module: tercile
   - model: conv
   - optimizer: adam
-  - transform: latlon
+  - transform: geography
 
 include_features: True
 early_stopping:
