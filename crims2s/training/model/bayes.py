@@ -275,8 +275,18 @@ class MultiCenterBayesianUpdateModel(nn.Module):
 
 
 class Projection(nn.Module):
-    def __init__(self, in_features, out_features, moments=False, width=7, depth=2):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        moments=False,
+        width=7,
+        depth=2,
+        flatten_time=False,
+    ):
         super().__init__()
+
+        self.flatten_time = flatten_time
 
         self.conv = nn.Conv3d(
             in_features,
@@ -304,7 +314,12 @@ class Projection(nn.Module):
             # Select first member.
             x = features[..., 0, :]
 
-        return self.act(self.bn(self.conv(x)))
+        x = self.act(self.bn(self.conv(x)))
+
+        if self.flatten_time:
+            x = torch.mean(x, dim=-1, keepdim=True)  # Flatten time dim.
+
+        return x
 
 
 class ConvBlock(nn.Module):
@@ -389,13 +404,15 @@ class VariableBranch(nn.Module):
 
 
 class GlobalBranchBlock(nn.Module):
-    def __init__(self, in_features, out_features, dilation=1, stride=2, padding=1):
+    def __init__(
+        self, in_features, out_features, dilation=1, stride=2, padding=1, width=3,
+    ):
         super().__init__()
 
         self.conv1 = nn.Conv2d(
             in_features,
             out_features,
-            kernel_size=3,
+            kernel_size=width,
             stride=stride,
             bias=False,
             dilation=dilation,
@@ -408,7 +425,7 @@ class GlobalBranchBlock(nn.Module):
         self.conv2 = nn.Conv2d(
             out_features,
             out_features,
-            kernel_size=3,
+            kernel_size=width,
             bias=False,
             padding=padding,
             padding_mode="circular",
@@ -423,28 +440,68 @@ class GlobalBranchBlock(nn.Module):
 
 
 class GlobalBranch(nn.Module):
-    def __init__(self, in_features, out_features, stride=2, dilation=1, padding=1):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        stride=2,
+        dilation=1,
+        padding=1,
+        width=3,
+        n_constant_blocks=0,
+    ):
         super().__init__()
 
         size1 = max(out_features // 4, in_features)
         size2 = max(out_features // 2, in_features)
 
-        self.block1 = GlobalBranchBlock(
-            in_features, size1, stride=stride, dilation=dilation, padding=padding
-        )
-        self.block2 = GlobalBranchBlock(
-            size1, size2, stride=stride, dilation=dilation, padding=padding
-        )
-        self.block3 = GlobalBranchBlock(
-            size2, out_features, stride=stride, dilation=dilation, padding=padding
+        constant_size_blocks = [
+            GlobalBranchBlock(
+                size2,
+                size2,
+                stride=stride,
+                dilation=dilation,
+                padding=padding,
+                width=width,
+            )
+            for _ in range(n_constant_blocks)
+        ]
+
+        self.blocks = nn.ModuleList(
+            [
+                GlobalBranchBlock(
+                    in_features,
+                    size1,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=padding,
+                    width=width,
+                ),
+                GlobalBranchBlock(
+                    size1,
+                    size2,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=padding,
+                    width=width,
+                ),
+                *constant_size_blocks,
+                GlobalBranchBlock(
+                    size2,
+                    out_features,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=padding,
+                    width=width,
+                ),
+            ]
         )
 
     def forward(self, x):
         x = x.mean(dim=-1)  # Flatten time dimension.
 
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
+        for b in self.blocks:
+            x = b(x)
 
         x = x.mean(dim=[-1, -2])  # Global average pooling to get a single vector.
 

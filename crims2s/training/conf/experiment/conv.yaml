@@ -2,7 +2,7 @@ defaults:
   - dataset: ncep
   - module: tercile
   - model: conv
-  - optimizer: adam
+  - optimizer: spec_adam
   - transform: geography
 
 include_features: True
@@ -12,6 +12,3 @@ early_stopping:
 batch_size: 1
 backend:
   accumulate_grad_batches: 4
-
-optimizer:
-  weight_decay: 1e-6

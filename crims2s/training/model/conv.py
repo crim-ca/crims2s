@@ -22,26 +22,38 @@ class ConvPostProcessingModel(nn.Module):
         global_stride=2,
         global_dilation=1,
         global_padding=1,
+        global_n_constant_blocks=0,
+        flatten_time=True,
     ):
         super().__init__()
 
         self.global_branch = global_branch
 
-        self.projection = Projection(in_features, embedding_size, moments=moments)
+        self.projection = Projection(
+            in_features, embedding_size, moments=moments, flatten_time=flatten_time
+        )
+
+        if flatten_time:
+            depth = 1
+        else:
+            depth = 3
+
         self.common_trunk = CommonTrunk(
-            embedding_size, n_blocks=common_trunk_blocks, dropout=dropout
+            embedding_size, n_blocks=common_trunk_blocks, dropout=dropout, depth=depth,
         )
         self.t2m_branch = VariableBranch(
             embedding_size,
             dropout=dropout,
             out_features=out_features,
             n_blocks=variable_branch_blocks,
+            depth=depth,
         )
         self.tp_branch = VariableBranch(
             embedding_size,
             dropout=dropout,
             out_features=out_features,
             n_blocks=variable_branch_blocks,
+            depth=depth,
         )
 
         if self.global_branch:
@@ -51,6 +63,7 @@ class ConvPostProcessingModel(nn.Module):
                 stride=global_stride,
                 dilation=global_dilation,
                 padding=global_padding,
+                n_constant_blocks=global_n_constant_blocks,
             )
 
     def forward(self, x):
@@ -124,26 +137,9 @@ class DistributionConvPostProcessing(nn.Module):
 
 class TercilesConvPostProcessing(DistributionModelAdapter):
     def __init__(
-        self,
-        in_features,
-        embedding_size,
-        debias=False,
-        moments=True,
-        dropout=0.0,
-        global_stride=2,
-        global_dilation=1,
-        global_padding=1,
+        self, in_features, embedding_size, debias=False, **kwargs,
     ):
-        conv_model = ConvPostProcessingModel(
-            in_features,
-            embedding_size,
-            moments=moments,
-            dropout=dropout,
-            global_branch=True,
-            global_stride=global_stride,
-            global_dilation=global_dilation,
-            global_padding=global_padding,
-        )
+        conv_model = ConvPostProcessingModel(in_features, embedding_size, **kwargs)
         distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
 
         super().__init__(distribution_model)

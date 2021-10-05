@@ -6,3 +6,5 @@ dropout: 0.05
 global_dilation: 1
 global_padding: 1
 global_stride: 2
+global_n_constant_blocks: 0
+flatten_time: True
