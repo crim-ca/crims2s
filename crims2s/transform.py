@@ -284,3 +284,32 @@ class AddGeographyFeatures:
         batch["features"] = new_features_dataset
 
         return batch
+
+
+class RandomNoise:
+    def __init__(self, keys=["features_features"], sigma=0.01):
+        self.keys = keys
+        self.sigma = sigma
+
+    def __call__(self, example):
+        for k in self.keys:
+            x = example[k]
+            example[k] += self.sigma * torch.randn_like(x)
+
+        return example
+
+
+def full_transform(
+    geography_file, weeks_12=False, make_distributions=False, random_noise_sigma=0.0
+):
+    transforms = [
+        AddGeographyFeatures(geography_file),
+        AddBiweeklyDimTransform(weeks_12),
+        LinearModelAdapter(make_distributions=make_distributions),
+        AddMetadata(),
+        ExampleToPytorch(),
+        CubeRootTP(),
+        AddLatLonFeature(),
+        RandomNoise(sigma=random_noise_sigma),
+    ]
+    return CompositeTransform(transforms)

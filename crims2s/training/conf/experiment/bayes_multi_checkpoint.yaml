@@ -3,7 +3,7 @@ defaults:
   - module: bayes
   - model: bayes_multi_checkpoint
   - optimizer: spec_bayes_noforecast
-  - transform: geography
+  - transform: full
 
 dataset:
   include_features: True

@@ -3,7 +3,7 @@ defaults:
   - module: tercile
   - model: conv
   - optimizer: spec_adam
-  - transform: geography
+  - transform: full
 
 include_features: True
 early_stopping:
