@@ -5,6 +5,7 @@ See notebook distributions-of-parameters.ipynb"""
 
 import numpy as np
 import torch
+import random
 import xarray as xr
 
 from .util import add_biweekly_dim, obs_to_biweekly, std_estimator, fix_s2s_dataset_dims
@@ -247,23 +248,20 @@ class AddLatLonFeature:
         pass
 
     def __call__(self, example):
-        features = example["features_features"]
-        lat = example["latitude"]
-        lon = example["longitude"]
+        obs = example["obs"]
+        lat_array = obs["latitude"].assign_coords(variable="lat")
+        lat_array = lat_array / lat_array.max()
 
-        lat_feature = torch.zeros(121, 240)
-        lat_feature[:, :] = (lat / lat.max()).unsqueeze(dim=-1)
+        lon_array = obs["longitude"].assign_coords(variable="lon")
+        lon_array = np.sin(np.deg2rad(lon_array))
 
-        lon_feature = torch.zeros(121, 240)
-        lon_feature[:] = torch.sin((lon / 360.0) * 2.0 * np.pi)
+        features_array = example["features"].features
 
-        lat_lon_features = torch.stack([lat_feature, lon_feature], dim=-1).unsqueeze(-2)
+        catted_features = xr.concat(
+            [features_array, lat_array, lon_array], dim="variable"
+        )
 
-        lat_lon_features_weekly = torch.zeros_like(features[..., :2])
-        lat_lon_features_weekly[:, :] = lat_lon_features
-
-        new_feature = torch.cat([features, lat_lon_features_weekly], dim=-1)
-        example["features_features"] = new_feature
+        example["features"] = catted_features.to_dataset()
 
         return example
 
@@ -299,17 +297,68 @@ class RandomNoise:
         return example
 
 
+class LongitudeRoll:
+    def __init__(self):
+        pass
+
+    def __call__(self, example):
+        obs = example["obs"]
+        longitude_length = obs.sizes["longitude"]
+
+        roll = random.randint(0, longitude_length)
+
+        rolled_example = example
+        for k in example:
+            if k not in ["eccc_available", "ncep_available"]:
+                rolled_dataset = (
+                    example[k].roll(longitude=roll, roll_coords=True).drop("longitude")
+                )
+
+                rolled_example[k] = rolled_dataset
+
+        return rolled_example
+
+
+class MembersSubsetTransform:
+    def __init__(self, subset_size=1):
+        self.subset_size = subset_size
+
+    def __call__(self, example):
+        features = example["features"]
+
+        n_members = features.sizes["realization"]
+        members = sorted(random.choices(range(n_members), k=self.subset_size))
+        features = features.isel(realization=members)
+
+        example["features"] = features
+
+        return example
+
+
 def full_transform(
-    geography_file, weeks_12=False, make_distributions=False, random_noise_sigma=0.0
+    geography_file,
+    weeks_12=False,
+    make_distributions=False,
+    random_noise_sigma=0.0,
+    roll=False,
+    n_members=1,
 ):
-    transforms = [
+    xarray_transforms = [
+        MembersSubsetTransform(n_members),
+        AddLatLonFeature(),
         AddGeographyFeatures(geography_file),
         AddBiweeklyDimTransform(weeks_12),
+    ]
+
+    if roll:
+        xarray_transforms.append(LongitudeRoll())
+
+    transforms = [
+        *xarray_transforms,
         LinearModelAdapter(make_distributions=make_distributions),
         AddMetadata(),
         ExampleToPytorch(),
         CubeRootTP(),
-        AddLatLonFeature(),
         RandomNoise(sigma=random_noise_sigma),
     ]
     return CompositeTransform(transforms)

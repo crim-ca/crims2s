@@ -3,3 +3,5 @@ geography_file: ***HOME***fast_scratch/s2s/from-s2s/ecmwf-orog.nc
 weeks_12: False
 make_distributions: False
 random_noise_sigma: 0.0
+roll: False
+n_members: 1
