@@ -156,9 +156,8 @@ class ExampleToPytorch:
             if dataset_name in example:
                 dataset = example[dataset_name]
                 for variable in dataset.data_vars:
-                    pytorch_example[f"{dataset_name}_{variable}"] = torch.from_numpy(
-                        dataset[variable].data
-                    )
+                    new_key = f"{dataset_name}_{variable}"
+                    pytorch_example[new_key] = torch.from_numpy(dataset[variable].data)
 
         for k in ["year", "monthday", "month", "eccc_available", "ncep_available"]:
             pytorch_example[k] = example[k]
@@ -250,10 +249,10 @@ class AddLatLonFeature:
     def __call__(self, example):
         obs = example["obs"]
         lat_array = obs["latitude"].assign_coords(variable="lat")
-        lat_array = lat_array / lat_array.max()
+        lat_array = (lat_array / lat_array.max()).astype("float32")
 
         lon_array = obs["longitude"].assign_coords(variable="lon")
-        lon_array = np.sin(np.deg2rad(lon_array))
+        lon_array = np.sin(np.deg2rad(lon_array)).astype("float32")
 
         features_array = example["features"].features
 

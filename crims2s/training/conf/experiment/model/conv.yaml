@@ -8,3 +8,8 @@ global_padding: 1
 global_stride: 2
 global_n_constant_blocks: 0
 flatten_time: True
+
+variable_branch_blocks: 3
+common_trunk_blocks: 3
+
+moments: False

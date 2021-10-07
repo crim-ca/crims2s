@@ -17,13 +17,17 @@ optim_spec = {
 
 optimizers, schedulers = create_optim(m, optim_spec)"""
 
+import logging
 import pydoc
 import re
+
+
+_logger = logging.getLogger(__name__)
 
 # optim spec:  optimizer_name, list of (regex, params) pairs, params, scheduler
 
 
-def create_optim(model, optim_spec, check_requires_grad=True):
+def create_optim(model, optim_spec, check_requires_grad=True, check_unassigned=True):
     """Create an optimization setup from a specification. 
     
     Parameters:
@@ -51,7 +55,7 @@ def create_optim(model, optim_spec, check_requires_grad=True):
     unassigned_params = find_unassigned_params(
         model, optimizers, check_requires_grad=check_requires_grad
     )
-    if unassigned_params:
+    if unassigned_params and check_unassigned:
         raise RuntimeError(f"There are unassigned params: {unassigned_params}")
 
     return optimizers, schedulers
@@ -87,6 +91,11 @@ def make_one_optimizer(
 ):
     param_groups = resolve_param_spec(
         model, params, check_requires_grad=check_requires_grad
+    )
+
+    param_group_lengths = ", ".join([str(len(x["params"])) for x in param_groups])
+    _logger.info(
+        f"Optimizer has {len(param_groups)} param groups of lengths {param_group_lengths}."
     )
 
     optimizer_cls = pydoc.locate(_target_)

@@ -518,12 +518,15 @@ class BiheadedWeightModel(nn.Module):
         out_features=2,
         moments=False,
         variable_branch_blocks=1,
+        flatten_time=True,
     ):
         super().__init__()
 
         self.global_branch = global_branch
 
-        self.projection = Projection(in_features, embedding_size, moments=moments)
+        self.projection = Projection(
+            in_features, embedding_size, moments=moments, flatten_time=flatten_time,
+        )
         self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
         self.t2m_branch = VariableBranch(
             embedding_size,
