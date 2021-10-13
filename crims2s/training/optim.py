@@ -1,6 +1,7 @@
 import torch
 
 from collections.abc import Mapping, Iterable
+from .optim_spec import create_optim
 
 
 def bayes_optimizer(model, cls, forecast_lr, weights_lr, **kwargs):
@@ -45,3 +46,28 @@ def adam(model, **kwargs):
 
 def adagrad(model, **kwargs):
     return torch.optim.Adagrad(model.parameters(), **kwargs)
+
+
+class OptimizerMaker:
+    """Base class that I use to detect if we have an optimizer factory instead
+    of an optimizer."""
+
+    def __call__(self, model):
+        raise NotImplementedError
+
+
+class OptimSpecMaker(OptimizerMaker):
+    def __init__(self, model, optim_spec):
+        self.optim_spec = optim_spec
+
+    def __call__(self, model):
+        return create_optim(model, self.optim_spec, check_requires_grad=True)
+
+
+def three_groups_scheduler(optimizer, freeze_forecast_epoch):
+    forecast_lambda = lambda epoch: 1.0 if epoch < freeze_forecast_epoch else 0.0
+    weights_lambda = lambda epoch: 1.0
+
+    return torch.optim.lr_scheduler.LambdaLR(
+        optimizer, [forecast_lambda, forecast_lambda, weights_lambda]
+    )

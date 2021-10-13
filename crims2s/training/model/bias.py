@@ -1,13 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .util import (
-    MonthlyModel,
-    PytorchMultiplexer,
-    WeeklyModel,
-    MonthlyMultiplexer,
-    WeeklyMultiplexer,
-)
+from .util import MonthlyMultiplexer, WeeklyMultiplexer
 
 
 class BiasCorrectionModel(nn.Module):
@@ -97,14 +91,3 @@ class DistributionBiasCorrectionModel(nn.Module):
         tp_distribution = torch.distributions.Normal(loc=tp_mu, scale=tp_sigma)
 
         return t2m_distribution, tp_distribution
-
-
-class MonthlyBiasCorrection(MonthlyModel):
-    def __init__(self):
-        super().__init__(DistributionBiasCorrectionModel)
-
-
-class WeeklyBiasCorrection(WeeklyModel):
-    def __init__(self):
-        super().__init__(DistributionBiasCorrectionModel)
-

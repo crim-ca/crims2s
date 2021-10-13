@@ -9,3 +9,4 @@ last_forecast:
 year: 2020
 file_label: "forecast"
 valid_threshold:
+name: test

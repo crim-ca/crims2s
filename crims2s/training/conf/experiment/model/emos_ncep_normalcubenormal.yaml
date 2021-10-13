@@ -1,0 +1,13 @@
+_target_: crims2s.training.model.util.DistributionModelAdapter
+model: 
+  _target_: crims2s.training.model.emos.TempPrecipEMOS
+  t2m_model:
+    _target_: crims2s.training.model.MonthlyNormalEMOSModel
+    loc_key: ncep_parameters_t2m_mu
+    scale_key: ncep_parameters_t2m_sigma
+    biweekly: True
+  tp_model:
+    _target_: crims2s.training.model.MonthlyNormalEMOSModel
+    loc_key: ncep_parameters_tp_cube_root_mu
+    scale_key: ncep_parameters_tp_cube_root_sigma
+    biweekly: ${experiment.model.model.t2m_model.biweekly}

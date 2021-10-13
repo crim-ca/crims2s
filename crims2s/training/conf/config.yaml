@@ -1,5 +1,6 @@
 defaults:
-  - experiment: bayes_conv
+  - experiment: bayes_multi_checkpoint
+  - backend: singlegpu
 
 hydra:
   job:
@@ -21,13 +22,8 @@ experiment:
     slurm_job_id: "${oc.env:SLURM_JOB_ID,null}"
     slurm_array_jobid: "${oc.env:SLURM_ARRAY_JOB_ID,null}"
     slurm_array_taskid: "${oc.env:SLURM_ARRAY_TASK_ID,null}"
-  # Config for lightning trainer.
-  trainer:
-    accelerator: auto
-    devices: 1
-    max_epochs: 100
+  max_epochs: 100
   dataset:
     include_model: False
 
-num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
 lr_find: False

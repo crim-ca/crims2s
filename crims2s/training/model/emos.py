@@ -1,10 +1,8 @@
 import torch
 import torch.nn as nn
-from torch.nn.modules.module import register_module_backward_hook
 
-from .util import MonthlyMultiplexer, WeeklyMultiplexer
+from .util import MonthlyMultiplexer, WeeklyMultiplexer, WeeklyRollingWindowMultiplexer
 from ...distribution import Gamma
-from ...util import ECMWF_FORECASTS
 
 
 class LinearModel(nn.Module):
@@ -124,6 +122,20 @@ class NormalCubeNormalEMOS(TempPrecipEMOS):
         )
 
 
+class RollingWindowEMOS(TempPrecipEMOS):
+    def __init__(self, window_size=20, prefix="model_parameters"):
+        t2m_model = RollingWindowNormalEMOSModel(
+            window_size, f"{prefix}_t2m_mu", f"{prefix}_t2m_sigma",
+        )
+        tp_model = RollingWindowNormalEMOSModel(
+            window_size, f"{prefix}_tp_cube_root_mu", f"{prefix}_tp_cube_root_sigma",
+        )
+
+        super().__init__(
+            t2m_model, tp_model,
+        )
+
+
 class MonthlyLinearModel(MonthlyMultiplexer):
     def __init__(self, *args, **kwargs):
         super().__init__(LinearModel, *args, **kwargs)
@@ -134,27 +146,24 @@ class WeeklyLinearModel(WeeklyMultiplexer):
         super().__init__(LinearModel, *args, **kwargs)
 
 
+class RollingWindowLinearModel(WeeklyRollingWindowMultiplexer):
+    def __init__(self, window_size, *args, **kwargs):
+        super().__init__(window_size, LinearModel, *args, **kwargs)
+
+
 class MultiplexedNormalEMOSModel(nn.Module):
     """EMOS model that supports multiplexed linear models."""
 
     def __init__(
-        self,
-        loc_key,
-        scale_key,
-        linear_model_cls,
-        key,
-        biweekly=False,
-        regularization=1e-9,
+        self, loc_key, scale_key, loc_model, scale_model, key, regularization=1e-9,
     ):
         super().__init__()
 
         self.loc_key = loc_key
         self.scale_key = scale_key
 
-        shape = (2, 121, 240) if biweekly else (121, 240)
-
-        self.loc_model = linear_model_cls(*shape)
-        self.scale_model = linear_model_cls(*shape, fill_weights=1.2)
+        self.loc_model = loc_model
+        self.scale_model = scale_model
 
         self.regularization = regularization
 
@@ -173,23 +182,40 @@ class MultiplexedNormalEMOSModel(nn.Module):
 
 class MonthlyNormalEMOSModel(MultiplexedNormalEMOSModel):
     def __init__(self, loc_key, scale_key, biweekly=False, regularization=1e-9):
+        shape = (2, 121, 240) if biweekly else (121, 240)
+        loc_model = MonthlyLinearModel(*shape)
+        scale_model = MonthlyLinearModel(*shape)
+
         super().__init__(
             loc_key,
             scale_key,
-            MonthlyLinearModel,
+            loc_model,
+            scale_model,
             "month",
-            biweekly=biweekly,
             regularization=regularization,
         )
 
 
 class WeeklyNormalEMOSModel(MultiplexedNormalEMOSModel):
     def __init__(self, loc_key, scale_key, biweekly=False, regularization=1e-9):
+        shape = (2, 121, 240) if biweekly else (121, 240)
+        loc_model = MonthlyLinearModel(*shape)
+        scale_model = MonthlyLinearModel(*shape)
+
         super().__init__(
             loc_key,
             scale_key,
-            WeeklyLinearModel,
+            loc_model,
+            scale_model,
             "monthday",
-            biweekly=biweekly,
             regularization=regularization,
         )
+
+
+class RollingWindowNormalEMOSModel(MultiplexedNormalEMOSModel):
+    def __init__(self, window_size, loc_key, scale_key):
+        shape = (2, 121, 240)
+        loc_model = RollingWindowLinearModel(window_size, *shape)
+        scale_model = RollingWindowLinearModel(window_size, *shape)
+        super().__init__(loc_key, scale_key, loc_model, scale_model, "monthday")
+

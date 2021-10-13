@@ -1,13 +1,14 @@
 """Models that use deep learning to perform a bayesian update on the prior and thus make
 a better forecast."""
 
-from crims2s.training.model.emos import NormalCubeNormalEMOS
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .bias import ModelParameterBiasCorrection
+from .emos import NormalCubeNormalEMOS, RollingWindowEMOS
 from .util import DistributionModelAdapter, DistributionToTerciles
 
 
@@ -32,208 +33,101 @@ class TrivialWeightModel(nn.Module):
 
 
 class TileWeightModel(nn.Module):
-    def __init__(self, initial_w=1.0):
+    def __init__(self, n_models=4):
         super().__init__()
-        self.w = nn.parameter.Parameter(torch.full((2, 121, 240), initial_w))
+        self.t2m_weights = nn.parameter.Parameter(torch.ones((n_models, 2, 121, 240)))
+        self.tp_weights = nn.parameter.Parameter(torch.ones((n_models, 2, 121, 240)))
 
-    def forward(self, example):
-        return self.w
+    def forward(self, batch_size):
+        # The same weights are shared across the batch, but we fake a batch dimension
+        # nontheless so that the output of this model matches the output of other models.
+        t2m_weights = torch.unsqueeze(self.t2m_weights, dim=0).repeat(
+            (batch_size, 1, 1, 1, 1)
+        )
+        tp_weights = torch.unsqueeze(self.tp_weights, dim=0).repeat(
+            (batch_size, 1, 1, 1, 1)
+        )
+
+        return t2m_weights, tp_weights
 
 
 class LinearWeightModel(nn.Module):
-    def __init__(self, in_features):
-        super().__init__()
-
-        self.lin = nn.parameter.Parameter(torch.rand(2, 121, 240, 14))
-        self.bias = nn.parameter.Parameter(torch.rand(2, 121, 240))
-
-    def forward(self, example):
-        example = example.mean(dim=-2).mean(dim=1)
-        remapped = (self.lin * example).sum(dim=-1) + self.bias
-
-        return remapped
-
-
-class ConvolutionalWeightModel(nn.Module):
-    def __init__(
-        self,
-        in_features,
-        kernel_size=(5, 5, 2),
-        padding=(2, 2, 0),
-        embedding_size=128,
-        moments=False,
-    ):
+    def __init__(self, in_features, n_models, moments=True):
         super().__init__()
 
         self.moments = moments
 
         in_features = 2 * in_features if moments else in_features
 
-        self.conv1 = nn.Conv3d(
-            in_features,
-            embedding_size,
-            kernel_size=kernel_size,
-            padding_mode="circular",
-            padding=padding,
+        self.t2m_weights = nn.parameter.Parameter(
+            torch.rand(n_models, 2, 121, 240, in_features)
         )
-
-        self.conv2 = nn.Conv3d(
-            embedding_size,
-            embedding_size,
-            kernel_size=kernel_size,
-            padding_mode="circular",
-            padding=padding,
+        self.t2m_bias = nn.parameter.Parameter(torch.rand(n_models, 2, 121, 240))
+        self.tp_weights = nn.parameter.Parameter(
+            torch.rand(n_models, 2, 121, 240, in_features)
         )
+        self.tp_bias = nn.parameter.Parameter(torch.rand(n_models, 2, 121, 240))
 
-        self.conv3 = nn.Conv3d(
-            embedding_size,
-            embedding_size,
-            kernel_size=kernel_size,
-            padding_mode="circular",
-            padding=padding,
-        )
-
-        self.lin = nn.Linear(embedding_size, 2)
-
-    def forward(self, example):
-        # Dims of example: batch, week, lead time, lat, lon, realization, dim.
+    def forward(self, features):
+        x = features.mean(dim=1)  # Collapse the time dimension.
 
         # Compute mean and std of features across members.
         if self.moments:
             # Use average and STD of members as features.
-            x = torch.cat([example.mean(dim=-2), example.std(dim=-2)], dim=-1)
+            x = torch.cat([x.mean(dim=-2), x.std(dim=-2)], dim=-1)
         else:
             # Select first member.
-            x = example[..., 0, :]
+            x = features[..., 0, :]
 
-        if len(x.shape) == 4:
-            # If there are no batches, simulate it by adding a batch dim.
-            x = x.unsqueeze(dim=0)
+        # Dimension keys: Batch, Time, Leadtime, lAtitude, lOngitude, Channel, Model
+        t2m = torch.einsum("baoc,mtaoc->bmtao", x, self.t2m_weights) + self.t2m_bias
+        tp = torch.einsum("baoc,mtaoc->bmtao", x, self.tp_weights) + self.tp_bias
 
-        x = torch.transpose(x, 1, -1)  # Swap dims and depth.
-
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-
-        # Mean over the depth (time) dimension.
-        x = x.mean(dim=-1)
-
-        x = torch.transpose(
-            torch.transpose(x, 1, -1), 1, 2
-        )  # Bring the channels back at the end.
-        x = self.lin(x)
-
-        x = torch.transpose(torch.transpose(x, 2, 3), 1, 2)
-
-        return x.squeeze()
+        return t2m, tp
 
 
-class SimpleConvWeightModel(nn.Module):
-    def __init__(self, in_features, kernel_size, padding, embedding_size, moments):
-        super().__init__()
+class OptionnalModelWrapper(DistributionModelAdapter):
+    """Wrap a model for which we don't have a full dataset. The examples contain a key
+    named `available_key` which tells us if the example is available or not. For 
+    instance, if inside the example `example['eccc_available'] == False` then we 
+    know that ECCC is not available for that example and we have to react accordingly."""
 
-        self.t2m_model = ConvolutionalWeightModel(
-            in_features, kernel_size, padding, embedding_size, moments
-        )
+    def __init__(self, model, parameters_prefix, available_key):
+        self.parameters_prefix = parameters_prefix
+        self.available_key = available_key
+        super().__init__(model)
 
-        self.tp_model = ConvolutionalWeightModel(
-            in_features, kernel_size, padding, embedding_size, moments
-        )
+    def forward(self, batch):
+        available = batch[self.available_key]
 
-    def forward(self, x):
-        x_t2m = self.t2m_model(x)
-        x_tp = self.tp_model(x)
+        if available.all():
+            return super().forward(batch)
 
-        return x_t2m, x_tp
+        # Assume fully undefined forcast. If forecast is available, replace nans with
+        # forecast.
+        t2m = torch.full_like(batch["terciles_t2m"], np.nan)
+        tp = torch.full_like(batch["terciles_tp"], np.nan)
 
+        if not available.any():
+            return t2m, tp
 
-class BayesianUpdateModel(nn.Module):
-    def __init__(
-        self,
-        forecast_model,
-        weight_model,
-        weight_model_factor=1.0,
-        bias_correction=False,
-    ):
-        super().__init__()
-        self.forecast_model = forecast_model
-        self.weight_model = weight_model
-        self.t2m_to_terciles = DistributionToTerciles()
-        self.tp_to_terciles = DistributionToTerciles()
-        self.weight_model_factor = weight_model_factor
+        # The mixed case is the trickyest.
 
-        if bias_correction:
-            self.bias_correction_model = ModelParameterBiasCorrection()
-        else:
-            self.bias_correction_model = None
+        # Make a new batch where there only is eccc available examples.
+        available_batch = {}
+        for k in batch.keys():
+            if k.startswith(self.parameters_prefix) or k.startswith("edges_"):
+                available_batch[k] = batch[k][available]
 
-    def make_weights(self, weight_model_output, nan_mask):
-        weights_from_model = self.weight_model_factor * weight_model_output
+            if k in ["month", "monthday", "year"]:
+                available_batch[k] = np.array(batch[k])[available.cpu()]
 
-        raw_update_weights = torch.where(
-            nan_mask, torch.zeros_like(weights_from_model), weights_from_model,
-        )
+        t2m_eccc, tp_eccc = super().forward(available_batch)
 
-        raw_prior_weights = torch.full_like(raw_update_weights, 0.0)
+        t2m[available] = t2m_eccc
+        tp[available] = tp_eccc
 
-        raw_weights = torch.stack([raw_prior_weights, raw_update_weights], dim=1)
-        weights = torch.softmax(raw_weights, dim=1)
-
-        return weights
-
-    def forward(self, example):
-        if self.bias_correction_model is not None:
-            example = self.bias_correction_model(example)
-
-        t2m_dist, tp_dist = self.forecast_model(example)
-
-        t2m_terciles = self.t2m_to_terciles(t2m_dist, example["edges_t2m"])
-        tp_terciles = self.tp_to_terciles(tp_dist, example["edges_tp"])
-
-        t2m_nan_mask = t2m_terciles.isnan().any(dim=1)
-        torch.transpose(t2m_terciles, 0, 1)[:, t2m_nan_mask] = 0.0
-
-        tp_nan_mask = tp_terciles.isnan().any(dim=1)
-        torch.transpose(tp_terciles, 0, 1)[:, tp_nan_mask] = 0.0
-
-        # We use the key features features because of our conversion convention from
-        # xarray to pytorch. The first features designates the features dataset. The
-        # second features designates the features array inside the dataset.
-        t2m_forecast_weight, tp_forecast_weight = self.weight_model(
-            example["features_features"]
-        )
-
-        t2m_weights = self.make_weights(t2m_forecast_weight, t2m_nan_mask)
-        tp_weights = self.make_weights(tp_forecast_weight, tp_nan_mask)
-
-        prior = torch.full_like(t2m_terciles, 1.0 / 3.0)
-
-        t2m_estimates = torch.stack([prior, t2m_terciles], dim=1)
-        tp_estimates = torch.stack([prior, tp_terciles], dim=1)
-
-        # Meaning of the keys: Batch, Ditribution (prior or forecast), Category, Lead time, lAtitude, lOngitude
-        t2m = torch.einsum("bdclao,bdlao->bclao", t2m_estimates, t2m_weights)
-        tp = torch.einsum("bdclao,bdlao->bclao", tp_estimates, tp_weights)
-
-        torch.transpose(t2m, 0, 1)[:, t2m_nan_mask] = np.nan
-        torch.transpose(tp, 0, 1)[:, tp_nan_mask] = np.nan
-
-        # t2m_prior_weights = torch.where(
-        #     ~t2m_nan_mask, t2m_weights[1], torch.zeros_like(t2m_weights[1])
-        # )
-        # tp_prior_weights = torch.where(
-        #     ~tp_nan_mask, tp_weights[1], torch.zeros_like(tp_weights[1])
-        # )
-
-        return (
-            t2m,
-            tp,
-            t2m_weights[:, 0][~t2m_nan_mask],
-            tp_weights[:, 0][~tp_nan_mask],
-            # t2m_terciles,
-            # tp_terciles,
-        )
+        return t2m, tp
 
 
 class ECMWFModelWrapper(DistributionModelAdapter):
@@ -242,46 +136,41 @@ class ECMWFModelWrapper(DistributionModelAdapter):
         super().__init__(model)
 
 
-class ECCCModelWrapper(DistributionModelAdapter):
-    def __init__(self):
-        model = NormalCubeNormalEMOS(biweekly=True, prefix="eccc_parameters")
+class RollingECMWFWrapper(DistributionModelAdapter):
+    def __init__(self, window_size=20):
+        model = RollingWindowEMOS(window_size=window_size)
         super().__init__(model)
 
-    def forward(self, batch):
-        eccc_available = batch["eccc_available"]
-        print(eccc_available)
 
-        if eccc_available.all():
-            return super().forward(batch)
-
-        # Assume uniform distribution. If eccc forecast is available, replace
-        # uniform prior with the eccc forecast.
-        t2m = torch.full_like(batch["terciles_t2m"], 1.0 / 3.0)
-        tp = torch.full_like(batch["terciles_tp"], 1.0 / 3.0)
-
-        if not eccc_available.any():
-            return t2m, tp
+class ECCCModelWrapper(OptionnalModelWrapper):
+    def __init__(self):
+        parameters_prefix = "eccc_parameters"
+        model = NormalCubeNormalEMOS(biweekly=True, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "eccc_available")
 
 
-        # The mixed case is the trickyest.
+class RollingECCCWrapper(OptionnalModelWrapper):
+    """Wrap a rolling window ECCC EMOS model such that it is compatible with our 
+    dataset dictinnary."""
 
-        # Make a new batch where there only is eccc available examples.
-        eccc_available_batch = {}
-        for k in batch.keys():
-            if k.startswith("eccc_parameters") or k.startswith("edges_"):
-                eccc_available_batch[k] = batch[k][eccc_available]
+    def __init__(self, window_size=20):
+        parameters_prefix = "eccc_parameters"
+        model = RollingWindowEMOS(window_size, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "eccc_available")
 
-            if k in ["month", "monthday", "year"]:
-                eccc_available_batch[k] = np.array(batch[k])[eccc_available.cpu()]
 
-        print(eccc_available_batch["month"])
+class NCEPModelWrapper(OptionnalModelWrapper):
+    def __init__(self):
+        parameters_prefix = "ncep_parameters"
+        model = NormalCubeNormalEMOS(biweekly=True, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "ncep_available")
 
-        t2m_eccc, tp_eccc = super().forward(eccc_available_batch)
 
-        t2m[eccc_available] = t2m_eccc
-        tp[eccc_available] = tp_eccc
-
-        return t2m, tp
+class RollingNCEPWrapper(OptionnalModelWrapper):
+    def __init__(self, window_size=20):
+        parameters_prefix = "ncep_parameters"
+        model = RollingWindowEMOS(window_size, prefix=parameters_prefix)
+        super().__init__(model, parameters_prefix, "ncep_available")
 
 
 class ClimatologyModel(nn.Module):
@@ -296,7 +185,7 @@ class ClimatologyModel(nn.Module):
 
 class MultiCenterBayesianUpdateModel(nn.Module):
     def __init__(
-        self, forecast_models, weight_model, bias_correction=False,
+        self, forecast_models, weight_model: nn.Module, bias_correction=False,
     ):
         super().__init__()
         self.forecast_models = nn.ModuleList(forecast_models)
@@ -328,16 +217,12 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         return weights
 
     def make_forecasts(self, example):
-        print("make forecasts")
         t2m_forecasts, tp_forecasts = [], []
         for m in self.forecast_models:
             t2m_forecast, tp_forecast = m(example)
 
             t2m_forecasts.append(t2m_forecast)
             tp_forecasts.append(tp_forecast)
-
-            print("t2m nans", t2m_forecast.isnan().float().mean())
-            print("tp nans", tp_forecast.isnan().float().mean())
 
         t2m_forecasts = torch.stack(t2m_forecasts, dim=1)
         tp_forecasts = torch.stack(tp_forecasts, dim=1)
@@ -352,16 +237,16 @@ class MultiCenterBayesianUpdateModel(nn.Module):
 
         # At this point the dims are: batch, model, category, lead_time, lat, lon.
 
-        print("t2m estimates", t2m_forecasts.shape)
-
         t2m_nan_mask = t2m_forecasts.isnan().any(dim=2)
         t2m_forecasts = torch.nan_to_num(t2m_forecasts, 0.0)
 
         tp_nan_mask = tp_forecasts.isnan().any(dim=2)
         tp_forecasts = torch.nan_to_num(tp_forecasts, 0.0)
 
+        batch_size = len(example["terciles_t2m"])
+        features_or_batch_size = example.get("features_features", batch_size)
         t2m_forecast_weight, tp_forecast_weight = self.weight_model(
-            example["features_features"]
+            features_or_batch_size
         )
 
         t2m_weights = self.make_weights(t2m_forecast_weight, t2m_nan_mask)
@@ -371,36 +256,37 @@ class MultiCenterBayesianUpdateModel(nn.Module):
         t2m = torch.einsum("bmclao,bmlao->bclao", t2m_forecasts, t2m_weights)
         tp = torch.einsum("bmclao,bmlao->bclao", tp_forecasts, tp_weights)
 
-        # torch.transpose(t2m, 0, 1)[:, t2m_nan_mask] = np.nan
-        # torch.transpose(tp, 0, 1)[:, tp_nan_mask] = np.nan
-
-        # t2m_prior_weights = torch.where(
-        #     ~t2m_nan_mask, t2m_weights[1], torch.zeros_like(t2m_weights[1])
-        # )
-        # tp_prior_weights = torch.where(
-        #     ~tp_nan_mask, tp_weights[1], torch.zeros_like(tp_weights[1])
-        # )
-
         t2m_nan_mask = example["terciles_t2m"].isnan().any(dim=1)
         tp_nan_mask = example["terciles_tp"].isnan().any(dim=1)
-
-        print("t2m weights", t2m_weights.shape)
-        print("t2m_nan_mask", t2m_nan_mask.shape)
-
-        print("t2m_nan rate where prior", t2m_nan_mask[:, 0].float().mean())
 
         # Model index 0 is the climatology model. It's the one we regularize again.
         return (
             t2m,
             tp,
-            t2m_weights[:, 0][~t2m_nan_mask],
-            tp_weights[:, 0][~tp_nan_mask],
+            torch.transpose(t2m_weights, 0, 1)[:, ~t2m_nan_mask],
+            torch.transpose(tp_weights, 0, 1)[:, ~tp_nan_mask],
         )
+
+    def forecast_models_parameters(self):
+        return self.forecast_models.parameters()
+
+    def weight_model_parameters(self):
+        return self.weight_model.parameters()
 
 
 class Projection(nn.Module):
-    def __init__(self, in_features, out_features, moments=False, width=7, depth=2):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        moments=False,
+        width=7,
+        depth=2,
+        flatten_time=False,
+    ):
         super().__init__()
+
+        self.flatten_time = flatten_time
 
         self.conv = nn.Conv3d(
             in_features,
@@ -428,7 +314,12 @@ class Projection(nn.Module):
             # Select first member.
             x = features[..., 0, :]
 
-        return self.act(self.bn(self.conv(x)))
+        x = self.act(self.bn(self.conv(x)))
+
+        if self.flatten_time:
+            x = torch.mean(x, dim=-1, keepdim=True)  # Flatten time dim.
+
+        return x
 
 
 class ConvBlock(nn.Module):
@@ -490,7 +381,7 @@ class CommonTrunk(nn.Module):
 
 class VariableBranch(nn.Module):
     def __init__(
-        self, embedding_size, n_blocks=1, width=1, depth=1, dropout=0.0, out_features=2
+        self, embedding_size, n_blocks=1, width=3, depth=1, dropout=0.0, out_features=2
     ):
         super().__init__()
 
@@ -513,22 +404,31 @@ class VariableBranch(nn.Module):
 
 
 class GlobalBranchBlock(nn.Module):
-    def __init__(self, in_features, out_features, dilation=1):
+    def __init__(
+        self, in_features, out_features, dilation=1, stride=2, padding=1, width=3,
+    ):
         super().__init__()
 
         self.conv1 = nn.Conv2d(
             in_features,
             out_features,
-            kernel_size=3,
-            stride=2,
+            kernel_size=width,
+            stride=stride,
             bias=False,
             dilation=dilation,
+            padding=padding,
+            padding_mode="circular",
         )
         self.bn1 = nn.BatchNorm2d(out_features)
         self.act1 = nn.LeakyReLU()
 
         self.conv2 = nn.Conv2d(
-            out_features, out_features, kernel_size=3, bias=False, dilation=dilation,
+            out_features,
+            out_features,
+            kernel_size=width,
+            bias=False,
+            padding=padding,
+            padding_mode="circular",
         )
         self.bn2 = nn.BatchNorm2d(out_features)
         self.act2 = nn.LeakyReLU()
@@ -540,22 +440,68 @@ class GlobalBranchBlock(nn.Module):
 
 
 class GlobalBranch(nn.Module):
-    def __init__(self, in_features, out_features):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        stride=2,
+        dilation=1,
+        padding=1,
+        width=3,
+        n_constant_blocks=0,
+    ):
         super().__init__()
 
         size1 = max(out_features // 4, in_features)
         size2 = max(out_features // 2, in_features)
 
-        self.block1 = GlobalBranchBlock(in_features, size1)
-        self.block2 = GlobalBranchBlock(size1, size2)
-        self.block3 = GlobalBranchBlock(size2, out_features)
+        constant_size_blocks = [
+            GlobalBranchBlock(
+                size2,
+                size2,
+                stride=stride,
+                dilation=dilation,
+                padding=padding,
+                width=width,
+            )
+            for _ in range(n_constant_blocks)
+        ]
+
+        self.blocks = nn.ModuleList(
+            [
+                GlobalBranchBlock(
+                    in_features,
+                    size1,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=padding,
+                    width=width,
+                ),
+                GlobalBranchBlock(
+                    size1,
+                    size2,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=padding,
+                    width=width,
+                ),
+                *constant_size_blocks,
+                GlobalBranchBlock(
+                    size2,
+                    out_features,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=padding,
+                    width=width,
+                ),
+            ]
+        )
 
     def forward(self, x):
         x = x.mean(dim=-1)  # Flatten time dimension.
 
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
+        for b in self.blocks:
+            x = b(x)
 
         x = x.mean(dim=[-1, -2])  # Global average pooling to get a single vector.
 
@@ -570,18 +516,29 @@ class BiheadedWeightModel(nn.Module):
         global_branch=True,
         dropout=0.0,
         out_features=2,
+        moments=False,
+        variable_branch_blocks=1,
+        flatten_time=True,
     ):
         super().__init__()
 
         self.global_branch = global_branch
 
-        self.projection = Projection(in_features, embedding_size)
+        self.projection = Projection(
+            in_features, embedding_size, moments=moments, flatten_time=flatten_time,
+        )
         self.common_trunk = CommonTrunk(embedding_size, dropout=dropout)
         self.t2m_branch = VariableBranch(
-            embedding_size, dropout=dropout, out_features=out_features
+            embedding_size,
+            dropout=dropout,
+            out_features=out_features,
+            n_blocks=variable_branch_blocks,
         )
         self.tp_branch = VariableBranch(
-            embedding_size, dropout=dropout, out_features=out_features
+            embedding_size,
+            dropout=dropout,
+            out_features=out_features,
+            n_blocks=variable_branch_blocks,
         )
 
         if self.global_branch:

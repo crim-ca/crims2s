@@ -1,4 +1,3 @@
-import collections.abc
 import hydra
 import logging
 import os
@@ -6,11 +5,15 @@ import pytorch_lightning as pl
 import pytorch_lightning.callbacks as pl_callbacks
 import pytorch_lightning.loggers as loggers
 import torch
+import torch.multiprocessing
+
 
 from ..dataset import S2SDataset, TransformedDataset
 from ..util import ECMWF_FORECASTS
 
 _logger = logging.getLogger(__name__)
+
+torch.multiprocessing.set_sharing_strategy("file_system")
 
 
 class ModelCheckpoint(pl_callbacks.ModelCheckpoint):
@@ -22,20 +25,44 @@ class ModelCheckpoint(pl_callbacks.ModelCheckpoint):
         return super().on_save_checkpoint(trainer, pl_module, checkpoint)
 
 
+class CompositeFilter:
+    def __init__(self, filters):
+        self.filters = filters
+
+    def __call__(self, x):
+        if self.filters:
+            for f in self.filters:
+                if not f(x):
+                    return False
+
+        return True
+
+
 def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 
-    train_years = list(range(2000, dataset_cfg.validate_from))
-    val_years = list(range(dataset_cfg.validate_from, dataset_cfg.end_year))
+    train_years = sorted(
+        list(set(range(2000, dataset_cfg.end_year)) - set(dataset_cfg.val_years))
+    )
+    val_years = sorted(list(dataset_cfg.val_years))
 
+    _logger.info(f"train year: {train_years}")
+    _logger.info(f"val years: {val_years}")
+
+    filter_lambdas = []
     if dataset_cfg.index is not None:
         month, day = ECMWF_FORECASTS[dataset_cfg.index]
         label = f"{month:02}{day:02}.nc"
 
         _logger.info("Targetting monthday %s", label)
-        name_filter = lambda x: x.endswith(label)
-    else:
-        name_filter = None
+        filter_lambdas.append(lambda x: x.endswith(label))
+
+    if "ncep_filter" in dataset_cfg and dataset_cfg.ncep_filter == True:
+        filter_lambdas.append(
+            lambda x: not (x.endswith("0102.nc") or x.endswith("1231.nc"))
+        )
+
+    name_filter = CompositeFilter(filter_lambdas)
 
     train_dataset = TransformedDataset(
         S2SDataset(
@@ -61,8 +88,11 @@ def make_datasets(dataset_cfg, transform_cfg):
     return train_dataset, val_dataset
 
 
-def run_experiment(cfg, num_workers=4, lr_find=False):
+def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
     train_dataset, val_dataset = make_datasets(cfg.dataset, cfg.transform)
+    _logger.info(
+        f"Length of datasets. Train: {len(train_dataset)}. Val: {len(val_dataset)}."
+    )
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -71,6 +101,7 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         num_workers=num_workers,
         shuffle=True,
         drop_last=False,
+        persistent_workers=True,
     )
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset,
@@ -78,6 +109,7 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         batch_sampler=None,
         num_workers=num_workers,
         drop_last=False,
+        persistent_workers=True,
     )
 
     model = hydra.utils.instantiate(cfg.model)
@@ -103,9 +135,15 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
 
     checkpointer = ModelCheckpoint(monitor="val_loss")
 
+    other_callbacks = []
+    if "callbacks" in cfg:
+        for callback_dict in cfg.callbacks:
+            other_callbacks.append(hydra.utils.instantiate(callback_dict))
+
     callbacks = [
         checkpointer,
         pl_callbacks.LearningRateMonitor(),
+        *other_callbacks,
     ]
     if "early_stopping" in cfg:
         early_stopping = pl_callbacks.EarlyStopping(
@@ -118,7 +156,10 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
         logger=[tensorboard, mlflow],
         callbacks=callbacks,
         default_root_dir="./lightning/",
-        **cfg.trainer,
+        gpus=backend_cfg.gpus,
+        accelerator=backend_cfg.accelerator,
+        max_epochs=cfg.max_epochs,
+        accumulate_grad_batches=backend_cfg.accumulate_grad_batches,
     )
 
     if lr_find:
@@ -140,8 +181,15 @@ def run_experiment(cfg, num_workers=4, lr_find=False):
 
 @hydra.main(config_path="conf", config_name="config")
 def cli(cfg):
+    if "env" in cfg and cfg.env is not None:
+        for key, value in cfg.env:
+            os.environ[key] = value
+
     run_experiment(
-        cfg.experiment, num_workers=int(cfg.num_workers), lr_find=cfg.lr_find
+        cfg.experiment,
+        cfg.backend,
+        num_workers=int(cfg.backend.num_workers),
+        lr_find=cfg.lr_find,
     )
 
 

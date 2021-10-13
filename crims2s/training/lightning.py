@@ -1,9 +1,7 @@
-from crims2s.transform import t2m_to_normal
+from crims2s.training.optim import OptimizerMaker
 import torch
-import torch.nn.functional as F
 import pytorch_lightning as pl
 
-from .model.bayes import BayesianUpdateModel
 from .model.util import DistributionToTerciles
 
 
@@ -189,7 +187,9 @@ class S2STercilesModule(pl.LightningModule):
 
         return {}
 
-    def log_rpss(self, t2m_terciles, tp_terciles, batch, label="Train"):
+    def log_rpss(
+        self, t2m_terciles, tp_terciles, batch, label="Train", sync_dist=False
+    ):
         with torch.no_grad():
             t2m_weight_mask = self.make_weight_mask(batch)
             tp_weight_mask = self.make_weight_mask(
@@ -204,9 +204,27 @@ class S2STercilesModule(pl.LightningModule):
             )
 
             rpss = rpss_t2m + rpss_tp
-            self.log(f"RPSS_Epoch/All/{label}", rpss, on_epoch=True, on_step=False)
-            self.log(f"RPSS_Epoch/T2M/{label}", rpss_t2m, on_epoch=True, on_step=False)
-            self.log(f"RPSS_Epoch/TP/{label}", rpss_tp, on_epoch=True, on_step=False)
+            self.log(
+                f"RPSS_Epoch/All/{label}",
+                rpss,
+                on_epoch=True,
+                on_step=False,
+                sync_dist=sync_dist,
+            )
+            self.log(
+                f"RPSS_Epoch/T2M/{label}",
+                rpss_t2m,
+                on_epoch=True,
+                on_step=False,
+                sync_dist=sync_dist,
+            )
+            self.log(
+                f"RPSS_Epoch/TP/{label}",
+                rpss_tp,
+                on_epoch=True,
+                on_step=False,
+                sync_dist=sync_dist,
+            )
 
     def make_weight_mask(self, batch, use_dry_mask=False):
         weight_mask = torch.ones(121, 240, device=batch["obs_t2m"].device)
@@ -247,7 +265,13 @@ class S2STercilesModule(pl.LightningModule):
         return dry_weights
 
     def compute_fields_loss(
-        self, batch, t2m_terciles, tp_terciles, label="Train", model=""
+        self,
+        batch,
+        t2m_terciles,
+        tp_terciles,
+        label="Train",
+        model="",
+        sync_dist=False,
     ):
         t2m_weight_mask = self.make_weight_mask(batch)
         tp_weight_mask = self.make_weight_mask(
@@ -262,9 +286,27 @@ class S2STercilesModule(pl.LightningModule):
 
         loss = t2m_rps + tp_rps
 
-        self.log(f"RPS_Epoch{model}/All/{label}", loss, on_epoch=True, on_step=False)
-        self.log(f"RPS_Epoch{model}/T2M/{label}", t2m_rps, on_epoch=True, on_step=False)
-        self.log(f"RPS_Epoch{model}/TP/{label}", tp_rps, on_epoch=True, on_step=False)
+        self.log(
+            f"RPS_Epoch{model}/All/{label}",
+            loss,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=sync_dist,
+        )
+        self.log(
+            f"RPS_Epoch{model}/T2M/{label}",
+            t2m_rps,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=sync_dist,
+        )
+        self.log(
+            f"RPS_Epoch{model}/TP/{label}",
+            tp_rps,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=sync_dist,
+        )
 
         return loss
 
@@ -296,43 +338,87 @@ class S2STercilesModule(pl.LightningModule):
         return rpss[~rpss_nan_mask & ~weight_zero].mean()
 
     def configure_optimizers(self):
-        return self.optimizer
+        if isinstance(self.optimizer, OptimizerMaker):
+            return self.optimizer(self.model)
+        else:
+            return self.optimizer
+
+
+class PriorWeightRegularization:
+    def __call__(self, t2m_weights, tp_weights):
+        t2m_prior_weights = t2m_weights[0]
+        tp_prior_weights = tp_weights[0]
+
+        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights], dim=0)
+        square_weights = torch.square(prior_weights)
+
+        return square_weights.mean()
+
+
+class L2WeightRegularization:
+    def __call__(self, t2m_weights, tp_weights):
+        t2m_prior_weights = t2m_weights
+        tp_prior_weights = tp_weights
+
+        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights], dim=1)
+
+        return torch.square(prior_weights).mean()
+
+
+def regularization_scheme_factory(name: str):
+    schemes = {
+        "prior": PriorWeightRegularization(),
+        "l2": L2WeightRegularization(),
+    }
+
+    return schemes[name]
 
 
 class S2SBayesModelModule(S2STercilesModule):
     def __init__(
         self,
-        model: BayesianUpdateModel,
+        model,
         optimizer,
         regularization: float,
-        model_only_epochs=0,
+        regularization_scheme="prior",
         **kwargs,
     ):
         super().__init__(model, optimizer, **kwargs)
         self.regularization = regularization
-        self.model_only_epochs = model_only_epochs
+        self.regularization_scheme = regularization_scheme
 
-    def on_epoch_start(self) -> None:
-        if self.current_epoch < self.model_only_epochs:
-            for p in self.model.weight_model.parameters():
-                p.requires_grad = False
-
-        else:
-            for p in self.model.weight_model.parameters():
-                p.requires_grad = True
+        self.regularization_scheme = regularization_scheme_factory(
+            regularization_scheme
+        )
 
     def training_step(self, batch, batch_idx, optimizer_idx=None):
-        (
-            t2m_terciles,
-            tp_terciles,
-            t2m_prior_weights,
-            tp_prior_weights,
-        ) = self.forward(batch)
+        (t2m_terciles, tp_terciles, t2m_weights, tp_weights,) = self.forward(batch)
 
         fields_loss = self.compute_fields_loss(batch, t2m_terciles, tp_terciles)
-        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
+        reg_loss = self.compute_reg_loss(t2m_weights, tp_weights)
 
         loss = fields_loss + reg_loss
+
+        with torch.no_grad():
+            for i in range(t2m_weights.shape[0]):
+                self.log(
+                    f"MeanWeight_Epoch_T2M/Train/{i}",
+                    t2m_weights[i].mean(),
+                    on_epoch=True,
+                    on_step=False,
+                )
+                self.log(
+                    f"MeanWeight_Epoch_TP/Train/{i}",
+                    tp_weights[i].mean(),
+                    on_epoch=True,
+                    on_step=False,
+                )
+                self.log(
+                    f"MeanWeight_Epoch_All/Train/{i}",
+                    torch.cat([t2m_weights[i], tp_weights[i]]).mean(),
+                    on_epoch=True,
+                    on_step=False,
+                )
 
         # with torch.no_grad():
         #     # Log EMOS only errors for scheduling purposes.
@@ -343,33 +429,10 @@ class S2SBayesModelModule(S2STercilesModule):
         self.log("Loss_Epoch/All/Train", loss, on_epoch=True, on_step=False)
         self.log("Loss_Step/All/Train", loss, on_epoch=False, on_step=True)
 
-        self.log(
-            "Loss_Epoch/PriorWeights/Train", reg_loss, on_epoch=True, on_step=False
-        )
-        self.log("Loss_Step/PriorWeights/Train", reg_loss, on_epoch=False, on_step=True)
         self.log("Loss_Epoch/Fields/Train", fields_loss, on_epoch=True, on_step=False)
 
-        self.log(
-            "PriorWeights_Epoch/T2M/Train",
-            t2m_prior_weights.detach().mean(),
-            on_epoch=True,
-            on_step=False,
-        )
-        self.log(
-            "PriorWeights_Epoch/TP/Train",
-            tp_prior_weights.detach().mean(),
-            on_epoch=True,
-            on_step=False,
-        )
-
-        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
+        prior_weights = torch.cat([t2m_weights[0], tp_weights[0]])
         prior_weights_mean = prior_weights.detach().mean()
-        self.log(
-            "PriorWeights_Epoch/All/Train",
-            prior_weights_mean,
-            on_epoch=True,
-            on_step=False,
-        )
         self.log(
             "PriorWeights_Step/All/Train",
             prior_weights_mean,
@@ -381,59 +444,89 @@ class S2SBayesModelModule(S2STercilesModule):
 
         return loss
 
-    def compute_reg_loss(self, t2m_prior_weights, tp_prior_weights):
-        prior_weights = torch.cat([t2m_prior_weights, tp_prior_weights])
-        square_weights = torch.square(prior_weights)
-
-        reg_loss = self.regularization * square_weights.mean()
+    def compute_reg_loss(self, t2m_weights, tp_weights, label="Train", sync_dist=False):
+        reg_loss = self.regularization * self.regularization_scheme(
+            t2m_weights, tp_weights
+        )
+        self.log(
+            f"RegLoss_Step/{label}",
+            reg_loss,
+            on_epoch=False,
+            on_step=(label == "Train"),
+            sync_dist=sync_dist,
+        )
+        self.log(
+            f"RegLoss_Epoch/{label}",
+            reg_loss,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=sync_dist,
+        )
 
         return reg_loss
 
     def validation_step(self, batch, batch_id):
-        (
-            t2m_terciles,
-            tp_terciles,
-            t2m_prior_weights,
-            tp_prior_weights,
-        ) = self.forward(batch)
+        (t2m_terciles, tp_terciles, t2m_weights, tp_weights,) = self.forward(batch)
 
         # _ = self.compute_fields_loss(
         #     batch, t2m_no_weights, tp_no_weights, model="EMOS", label="Val"
         # )
 
-        fields_loss = self.compute_fields_loss(
-            batch, t2m_terciles, tp_terciles, label="Val"
-        )
+        with torch.no_grad():
+            for i in range(t2m_weights.shape[0]):
+                self.log(
+                    f"MeanWeight_Epoch_T2M/Val/{i}",
+                    t2m_weights[i].mean(),
+                    on_epoch=True,
+                    on_step=False,
+                    sync_dist=True,
+                )
+                self.log(
+                    f"MeanWeight_Epoch_TP/Val/{i}",
+                    tp_weights[i].mean(),
+                    on_epoch=True,
+                    on_step=False,
+                    sync_dist=True,
+                )
+                self.log(
+                    f"MeanWeight_Epoch_All/Val/{i}",
+                    torch.cat([t2m_weights[i], tp_weights[i]]).mean(),
+                    on_epoch=True,
+                    on_step=False,
+                    sync_dist=True,
+                )
 
-        reg_loss = self.compute_reg_loss(t2m_prior_weights, tp_prior_weights)
+        fields_loss = self.compute_fields_loss(
+            batch, t2m_terciles, tp_terciles, label="Val", sync_dist=True,
+        )
+        reg_loss = self.compute_reg_loss(
+            t2m_weights, tp_weights, label="Val", sync_dist=True
+        )
 
         loss = fields_loss + reg_loss
 
-        self.log("val_loss", loss, logger=False, on_epoch=True, on_step=False)
-
-        self.log("Loss_Epoch/All/Val", loss, on_epoch=True, on_step=False)
-
-        self.log("Loss_Epoch/Fields/Val", fields_loss, on_epoch=True, on_step=False)
-        self.log("Loss_Epoch/PriorWeights/Val", reg_loss, on_epoch=True, on_step=False)
         self.log(
-            "PriorWeights_Epoch/T2M/Val",
-            t2m_prior_weights.detach().mean(),
-            on_epoch=True,
-            on_step=False,
+            "val_loss", loss, logger=False, on_epoch=True, on_step=False, sync_dist=True
         )
         self.log(
-            "PriorWeights_Epoch/TP/Val",
-            tp_prior_weights.detach().mean(),
-            on_epoch=True,
-            on_step=False,
+            "Loss_Epoch/All/Val", loss, on_epoch=True, on_step=False, sync_dist=True
         )
         self.log(
-            "PriorWeights_Epoch/All/Val",
-            torch.cat([t2m_prior_weights, tp_prior_weights]).detach().mean(),
+            "Loss_Epoch/Fields/Val",
+            fields_loss,
             on_epoch=True,
             on_step=False,
+            sync_dist=True,
+        )
+        self.log(
+            "Loss_Epoch/PriorWeights/Val",
+            reg_loss,
+            on_epoch=True,
+            on_step=False,
+            sync_dist=True,
         )
 
-        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Val")
+        self.log_rpss(t2m_terciles, tp_terciles, batch, label="Val", sync_dist=True)
 
         return {}
+

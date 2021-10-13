@@ -1,14 +1,14 @@
 defaults:
-  - dataset: lean
+  - dataset: ncep
   - module: tercile
   - model: conv
-  - optimizer: adam
-  - transform: latlon
+  - optimizer: spec_adam
+  - transform: full
 
 include_features: True
 early_stopping:
   patience: 10
 
 batch_size: 4
-
-optimizer.weight_decay: 1e-6
+backend:
+  accumulate_grad_batches: 1

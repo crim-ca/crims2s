@@ -1,0 +1,20 @@
+defaults:
+  - dataset: ncep
+  - module: tercile
+  - model: conv_fcn
+  - optimizer: spec_conv_fcn
+  - transform: full
+
+include_features: True
+early_stopping:
+  patience: 10
+
+batch_size: 16
+backend:
+  accumulate_grad_batches: 1
+
+unfreeze_epoch: 4
+
+callbacks:
+  - _target_: crims2s.training.callback.ConvFCNFinetuningCallback
+    unfreeze_epoch: ${experiment.unfreeze_epoch}

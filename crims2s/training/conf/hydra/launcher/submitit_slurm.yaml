@@ -5,7 +5,7 @@ nodes: 1
 mem_gb: 64
 array_parallelism: 12
 additional_parameters:
-  gres: gpu:1
+  gres: gpu:${backend.gpus}
 setup:
   - source ${env:HOME}/.bashrc
   - conda activate s2s
