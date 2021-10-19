@@ -3,12 +3,16 @@ is normalization of the fields before sending them to a neural net.
 
 See notebook distributions-of-parameters.ipynb"""
 
+import logging
 import numpy as np
 import torch
 import random
 import xarray as xr
 
 from .util import add_biweekly_dim, obs_to_biweekly, std_estimator, fix_s2s_dataset_dims
+
+_logger = logging.getLogger(__name__)
+
 
 FIELD_MEAN = {
     "gh10": 30583.0,
@@ -334,6 +338,20 @@ class MembersSubsetTransform:
         return example
 
 
+class VariableFilterTransform:
+    def __init__(self, to_filter=None):
+        self.to_filter = to_filter
+
+        if to_filter is not None:
+            _logger.info("Will filter vars: %s", to_filter)
+
+    def __call__(self, batch):
+        if self.to_filter is not None:
+            batch["features"] = batch["features"].sel(variable=self.to_filter)
+
+        return batch
+
+
 def full_transform(
     geography_file,
     weeks_12=False,
@@ -341,11 +359,13 @@ def full_transform(
     random_noise_sigma=0.0,
     roll=False,
     n_members=1,
+    filter_vars=None,
 ):
     xarray_transforms = [
         MembersSubsetTransform(n_members),
         AddLatLonFeature(),
         AddGeographyFeatures(geography_file),
+        VariableFilterTransform(filter_vars),
         AddBiweeklyDimTransform(weeks_12),
     ]
 
