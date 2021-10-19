@@ -1,0 +1,26 @@
+defaults:
+- dataset: ncep
+- module: tercile
+- model: emos_features
+- optimizer: adam
+- transform: full
+
+hydra:
+  launcher:
+    timeout_min: 120
+
+dataset:
+  include_features: True
+  val_years: 
+    - 2010
+    - 2017
+    - 2019
+  end_year: 2020
+batch_size: 16
+
+early_stopping:
+  patience: 10
+
+transform:
+  random_noise_sigma: 0.0
+  biweekly_features: True

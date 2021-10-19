@@ -4,7 +4,12 @@ setup(
     name="crims2s",
     author="CRIM",
     author_email="david.landry@crim.ca",
-    install_requires=["dask", "hydra-core", "pytorch-lightning==1.4.*"],
+    install_requires=[
+        "dask",
+        "hydra-core",
+        "pytorch-lightning==1.4.*",
+        "hydra-submitit-launcher",
+    ],
     entry_points={
         "console_scripts": [
             "s2s_infer = crims2s.training.infer:cli",

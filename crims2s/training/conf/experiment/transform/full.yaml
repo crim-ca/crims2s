@@ -6,3 +6,4 @@ random_noise_sigma: 1.0
 roll: False
 n_members: 1
 filter_vars: 
+biweekly_features: False

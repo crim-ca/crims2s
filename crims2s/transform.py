@@ -99,13 +99,19 @@ def apply_to_all(transform, example):
 class AddBiweeklyDimTransform:
     """Transform that takes a training example and adds the biweekly dimension to it."""
 
-    def __init__(self, weeks_12=False):
+    def __init__(self, weeks_12=False, features=False):
         self.weeks_12 = weeks_12
+        self.features = features
 
     def __call__(self, example):
+
+        to_transform = ["model", "obs"]
+        if self.features:
+            to_transform.append("features")
+
         new_example = {}
         for k in example:
-            if k in ["model", "obs"]:
+            if k in to_transform:
                 new_example[k] = add_biweekly_dim(example[k], weeks_12=self.weeks_12)
             else:
                 new_example[k] = example[k]
@@ -360,13 +366,14 @@ def full_transform(
     roll=False,
     n_members=1,
     filter_vars=None,
+    biweekly_features=False,
 ):
     xarray_transforms = [
         MembersSubsetTransform(n_members),
         AddLatLonFeature(),
         AddGeographyFeatures(geography_file),
         VariableFilterTransform(filter_vars),
-        AddBiweeklyDimTransform(weeks_12),
+        AddBiweeklyDimTransform(weeks_12, features=biweekly_features),
     ]
 
     if roll:
