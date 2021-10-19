@@ -5,11 +5,11 @@ _recursive_: False
 _convert_: partial
 optim_spec:
   - _target_: torch.optim.Adam
-    lr: 1e-3
-    weight_decay: 1e-5
+    lr: 1e-2
+    weight_decay: 0.0
     params:
       - _regex_: (.*)
     scheduler:
       _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
       _monitor_: val_loss
-      patience: 5
+      patience: 4

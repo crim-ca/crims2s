@@ -2,7 +2,7 @@ defaults:
 - dataset: ncep
 - module: tercile
 - model: emos_features
-- optimizer: adam
+- optimizer: spec_adam
 - transform: full
 
 hydra:

@@ -60,10 +60,10 @@ class PytorchRolllingWindowMultiplexer(nn.Module):
         elif isinstance(key, collections.abc.Iterable):
             outputs = []
             for i, k in enumerate(key):
-                unbatched_args = [a[i] for a in args]
+                unbatched_args = [a[[i]] for a in args]
                 outputs.append(self._compute_one_example(k, *unbatched_args))
 
-            return torch.stack(outputs, dim=0)
+            return torch.cat(outputs, dim=0)
         else:
             raise RuntimeError("Unregognized key type.")
 
