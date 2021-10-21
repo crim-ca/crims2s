@@ -1,4 +1,4 @@
-timeout_min: 4320
+timeout_min: ${experiment.timeout_min}
 cpus_per_task: 6
 tasks_per_node: 1
 nodes: 1

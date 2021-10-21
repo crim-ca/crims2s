@@ -344,6 +344,21 @@ class MembersSubsetTransform:
         return example
 
 
+class AddDateFeatureTransform:
+    def __call__(self, example):
+        features = example["features"]
+        date_features = np.sin(
+            features.valid_time.assign_coords(variable="date").dt.dayofyear / 366
+        )
+        new_features = xr.concat(
+            [features.features, date_features], dim="variable"
+        ).astype("float32")
+
+        example["features"] = new_features.to_dataset()
+
+        return example
+
+
 class VariableFilterTransform:
     def __init__(self, to_filter=None):
         self.to_filter = to_filter
@@ -367,6 +382,7 @@ def full_transform(
     n_members=1,
     filter_vars=None,
     biweekly_features=False,
+    add_date=False,
 ):
     xarray_transforms = [
         MembersSubsetTransform(n_members),
@@ -375,6 +391,9 @@ def full_transform(
         VariableFilterTransform(filter_vars),
         AddBiweeklyDimTransform(weeks_12, features=biweekly_features),
     ]
+
+    if add_date:
+        xarray_transforms.insert(2, AddDateFeatureTransform())
 
     if roll:
         xarray_transforms.append(LongitudeRoll())
