@@ -160,6 +160,7 @@ def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
         accelerator=backend_cfg.accelerator,
         max_epochs=cfg.max_epochs,
         accumulate_grad_batches=backend_cfg.accumulate_grad_batches,
+        limit_train_batches=cfg.limit_train_batches,
     )
 
     if lr_find:

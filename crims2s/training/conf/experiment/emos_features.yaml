@@ -5,9 +5,9 @@ defaults:
 - optimizer: spec_adam
 - transform: full
 
-hydra:
-  launcher:
-    timeout_min: 120
+
+
+timeout_min: 180
 
 dataset:
   include_features: True

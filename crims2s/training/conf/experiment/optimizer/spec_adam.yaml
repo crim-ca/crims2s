@@ -12,4 +12,4 @@ optim_spec:
     scheduler:
       _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
       _monitor_: val_loss
-      patience: 4
+      patience: 3

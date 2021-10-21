@@ -1,3 +1,3 @@
 _target_: crims2s.training.model.emos_features.TercilesEMOSFeatures
 in_features: 17
-window_size: 1
+window_size: 26

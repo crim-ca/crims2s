@@ -10,6 +10,8 @@ hydra:
   sweep:
     dir: ${oc.env:S2S_RUNS,.}/train/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
     subdir: ${hydra.job.num}
+  launcher:
+    timeout_min: ${experiment.timeout_min}
 
 # Default values for the experiment. They are meant to be overridden by the
 # experiment config group.
@@ -25,5 +27,6 @@ experiment:
   max_epochs: 100
   dataset:
     include_model: False
+  limit_train_batches: 1.0
 
 lr_find: False
