@@ -1,12 +1,16 @@
 _target_: crims2s.transform.CompositeTransform
 transforms:
 - _target_: crims2s.transform.AddGeographyFeatures
-  geography_file: ***HOME***fast_scratch/s2s/from-s2s/ecmwf-orog.nc
+  geography_file: ***BASEDIR***/from-s2s/ecmwf-orog.nc
+- _target_: crims2s.transform.VariableFilterTransform
+  to_filter:
 - _target_: crims2s.transform.AddBiweeklyDimTransform
   weeks_12: False
 - _target_: crims2s.transform.LinearModelAdapter
   make_distributions: False
+- _target_: crims2s.transform.AddDateFeatureTransform
+- _target_: crims2s.transform.AddLatLonFeature
 - _target_: crims2s.transform.AddMetadata
 - _target_: crims2s.transform.ExampleToPytorch
 - _target_: crims2s.transform.CubeRootTP
-- _target_: crims2s.transform.AddLatLonFeature
+  

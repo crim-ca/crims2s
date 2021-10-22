@@ -1,4 +1,4 @@
-dataset_dir: ***HOME***fast_scratch/s2s/mlready/2021-09-14-lean
+dataset_dir: ***BASEDIR***/mlready/2021-09-14-lean
 include_features: True
 val_years:
   - 2018
