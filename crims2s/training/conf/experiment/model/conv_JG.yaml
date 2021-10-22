@@ -1,0 +1,8 @@
+_target_: crims2s.training.model.conv.ConvPostProcessingJG
+in_features: 18
+embedding_size: 128
+debias: False
+kernel_size: 
+  - 3
+  - 3
+  - 3

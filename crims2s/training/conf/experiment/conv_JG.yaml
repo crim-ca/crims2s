@@ -1,0 +1,14 @@
+defaults:
+  - dataset: ncep
+  - module: tercile
+  - model: conv_JG
+  - optimizer: adam
+  - transform: full
+
+include_features: True
+early_stopping:
+  patience: 10
+
+batch_size: 4
+
+optimizer.weight_decay: 1e-6

@@ -1,3 +1,4 @@
+import numpy as np 
 import torch
 import torch.distributions
 import torch.nn as nn
@@ -143,3 +144,90 @@ class TercilesConvPostProcessing(DistributionModelAdapter):
         distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
 
         super().__init__(distribution_model)
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, embedding_size, kernel_size=(3, 3, 3)):
+        super().__init__()
+
+        if kernel_size[0] < 3:
+            padding = int(np.round(kernel_size[0] / 3))
+        else:
+            padding = int(np.ceil(kernel_size[0] / 3))
+
+        padding = (padding, padding, padding)
+
+        self.conv1 = nn.Conv3d(
+            embedding_size,
+            embedding_size,
+            kernel_size=kernel_size,
+            padding=padding,
+            padding_mode="circular",
+        )
+        self.act1 = nn.LeakyReLU()
+
+        self.conv2 = nn.Conv3d(
+            embedding_size,
+            embedding_size,
+            kernel_size=kernel_size,
+            padding=padding,
+            padding_mode="circular",
+        )
+        self.act2 = nn.LeakyReLU()
+
+        self.bn1 = nn.BatchNorm3d(embedding_size)
+        self.bn2 = nn.BatchNorm3d(embedding_size)
+
+    def forward(self, input):
+        x = input
+        x = self.act1(self.bn1(self.conv1(x)))
+        x = self.act2(self.bn2(self.conv2(x) + x))
+        return x
+
+
+class ConvModelJG(nn.Module):
+    def __init__(self, in_features, out_features, embedding_size, kernel_size):
+        super().__init__()
+
+        self.conv1 = nn.Conv3d(in_features, embedding_size, kernel_size=(1, 1, 1))
+        self.act1 = nn.LeakyReLU()
+        self.bn1 = nn.BatchNorm3d(embedding_size)
+
+        self.blocks = nn.ModuleList(
+            [
+            ConvBlock(embedding_size, kernel_size=(3, 3, 3)),
+            ConvBlock(embedding_size, kernel_size=(3, 3, 3))]
+            )
+
+        self.conv_weeks_34 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
+        self.conv_weeks_56 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
+
+
+    def forward(self, input):
+        x= input
+        x = torch.transpose(x, -1, 1)
+        x = torch.squeeze(x, -2)  # Swap channels and time dim.
+        x = self.act1(self.bn1(self.conv1(x)))
+
+        for b in self.blocks:
+            x = b(x)
+
+        x = x.mean(dim=-1)
+
+        post_weeks_34 = self.conv_weeks_34(x)
+        post_weeks_56 = self.conv_weeks_56(x)
+
+        stack = torch.stack([post_weeks_34, post_weeks_56], dim=-1)
+
+        t2m_post = stack[:, 0:2]
+        tp_post = stack[:, 2:4]
+
+        return t2m_post, tp_post
+
+
+class ConvPostProcessingJG(DistributionModelAdapter):
+    def __init__(self, in_features, embedding_size, kernel_size=(1, 1, 1), debias=False):
+        conv_model = ConvModelJG(in_features, 4,  embedding_size, kernel_size)
+        distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
+
+        super().__init__(distribution_model)    
