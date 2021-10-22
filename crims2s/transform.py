@@ -344,20 +344,6 @@ class MembersSubsetTransform:
         return example
 
 
-class VariableFilterTransform:
-    def __init__(self, to_filter=None):
-        self.to_filter = to_filter
-
-        if to_filter is not None:
-            _logger.info("Will filter vars: %s", to_filter)
-
-    def __call__(self, batch):
-        if self.to_filter is not None:
-            batch["features"] = batch["features"].sel(variable=self.to_filter)
-
-        return batch
-
-
 class AddDateFeatureTransform:
     def __call__(self, example):
         features = example["features"]
@@ -371,6 +357,20 @@ class AddDateFeatureTransform:
         example["features"] = new_features.to_dataset()
 
         return example
+
+
+class VariableFilterTransform:
+    def __init__(self, to_filter=None):
+        self.to_filter = to_filter
+
+        if to_filter is not None:
+            _logger.info("Will filter vars: %s", to_filter)
+
+    def __call__(self, batch):
+        if self.to_filter is not None:
+            batch["features"] = batch["features"].sel(variable=self.to_filter)
+
+        return batch
 
 
 def full_transform(

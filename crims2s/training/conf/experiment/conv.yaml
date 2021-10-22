@@ -9,6 +9,8 @@ include_features: True
 early_stopping:
   patience: 10
 
+timeout_min: 2880
+
 batch_size: 4
 backend:
   accumulate_grad_batches: 1

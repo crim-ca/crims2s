@@ -25,5 +25,7 @@ experiment:
   max_epochs: 100
   dataset:
     include_model: False
+  limit_train_batches: 1.0
+  timeout_min: 4320
 
 lr_find: False
