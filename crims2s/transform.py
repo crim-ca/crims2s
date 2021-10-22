@@ -99,13 +99,19 @@ def apply_to_all(transform, example):
 class AddBiweeklyDimTransform:
     """Transform that takes a training example and adds the biweekly dimension to it."""
 
-    def __init__(self, weeks_12=False):
+    def __init__(self, weeks_12=False, features=False):
         self.weeks_12 = weeks_12
+        self.features = features
 
     def __call__(self, example):
+
+        to_transform = ["model", "obs"]
+        if self.features:
+            to_transform.append("features")
+
         new_example = {}
         for k in example:
-            if k in ["model", "obs"]:
+            if k in to_transform:
                 new_example[k] = add_biweekly_dim(example[k], weeks_12=self.weeks_12)
             else:
                 new_example[k] = example[k]
@@ -338,6 +344,21 @@ class MembersSubsetTransform:
         return example
 
 
+class AddDateFeatureTransform:
+    def __call__(self, example):
+        features = example["features"]
+        date_features = np.sin(
+            features.valid_time.assign_coords(variable="date").dt.dayofyear / 366
+        )
+        new_features = xr.concat(
+            [features.features, date_features], dim="variable"
+        ).astype("float32")
+
+        example["features"] = new_features.to_dataset()
+
+        return example
+
+
 class VariableFilterTransform:
     def __init__(self, to_filter=None):
         self.to_filter = to_filter
@@ -360,14 +381,19 @@ def full_transform(
     roll=False,
     n_members=1,
     filter_vars=None,
+    biweekly_features=False,
+    add_date=False,
 ):
     xarray_transforms = [
         MembersSubsetTransform(n_members),
         AddLatLonFeature(),
         AddGeographyFeatures(geography_file),
         VariableFilterTransform(filter_vars),
-        AddBiweeklyDimTransform(weeks_12),
+        AddBiweeklyDimTransform(weeks_12, features=biweekly_features),
     ]
+
+    if add_date:
+        xarray_transforms.insert(2, AddDateFeatureTransform())
 
     if roll:
         xarray_transforms.append(LongitudeRoll())

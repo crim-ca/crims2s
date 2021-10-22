@@ -1,2 +1,4 @@
 _target_: crims2s.training.model.conv_pretrained.TercilesFCNPostProcessing
 in_features: 17
+adapter_embedding: 64
+adapter_n_blocks: 1

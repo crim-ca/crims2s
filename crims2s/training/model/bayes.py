@@ -310,7 +310,7 @@ class Projection(nn.Module):
         if self.moments:
             # Use average and STD of members as features.
             x = torch.cat([features.mean(dim=-2), features.std(dim=-2)], dim=-1)
-        else:
+        elif len(features.shape) == 6:
             # Select first member.
             x = features[..., 0, :]
 
