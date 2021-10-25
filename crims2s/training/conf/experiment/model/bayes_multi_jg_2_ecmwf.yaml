@@ -18,12 +18,10 @@ forecast_models:
     remove_prefix: model.
     checkpoint_path: ***BASEDIR***/runs/train/multirun/2021-09-28/13-46-11/17
   - _target_: crims2s.training.model.util.ModelWithCheckpoint
-    remove_prefix: model.
-    checkpoint_path: ***BASEDIR***/checkpoints/conv-jg-17c
     model:
-      _target_: crims2s.training.model.conv.ConvPostProcessingJG
-      in_features: 17
-      embedding_size: 128
+      _target_: crims2s.training.model.bayes.RollingECMWFWrapper
+    remove_prefix: model.
+    checkpoint_path: ***BASEDIR***/runs/train/multirun/2021-09-28/13-46-11/3
 weight_model:
   _target_: crims2s.training.model.bayes.BiheadedWeightModel
   in_features: 17
