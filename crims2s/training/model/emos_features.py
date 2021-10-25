@@ -4,42 +4,42 @@ import torch
 import torch.distributions
 import torch.nn as nn
 
+from ...transform import FIELD_STD
 from .util import DistributionModelAdapter, WeeklyRollingWindowMultiplexer
 
 
 class LinearModelFromFeatures(nn.Module):
-    def __init__(self, in_features, param_scale=1e-6):
+    def __init__(self, in_features, param_scale=1.0, init_std=0.1):
         super().__init__()
 
         self.param_scale = param_scale
 
-        self.multiplier_weights = nn.parameter.Parameter(
-            torch.normal(mean=torch.zeros(2, 121, 240, in_features), std=param_scale)
-        )
-        self.multiplier_bias = nn.parameter.Parameter(torch.ones(2, 121, 240))
+        self.weights = nn.Parameter(torch.ones((2, 121, 240)))
+        self.intercept = nn.Parameter(torch.zeros((2, 121, 240)))
 
-        self.intercept_weights = nn.parameter.Parameter(
-            torch.normal(mean=torch.zeros(2, 121, 240, in_features), std=param_scale)
-        )
-        self.intercept_bias = nn.parameter.Parameter(torch.zeros(2, 121, 240))
+        self.adjustment_weights = nn.Parameter(torch.zeros(2, 121, 240, in_features))
+        self.adjustment_bias = nn.Parameter(torch.zeros(2, 121, 240, in_features))
+
+        # self.multiplier_weights = nn.parameter.Parameter(
+        #     torch.normal(mean=torch.zeros(2, 121, 240, in_features), std=init_std)
+        # )
+        # self.multiplier_bias = nn.parameter.Parameter(torch.ones(2, 121, 240))
+
+        # self.intercept_weights = nn.parameter.Parameter(
+        #     torch.normal(mean=torch.zeros(2, 121, 240, in_features), std=init_std)
+        # )
+        # self.intercept_bias = nn.parameter.Parameter(torch.zeros(2, 121, 240))
 
     def forward(self, predictor, features):
 
         # Keys: Batch, Lead time, lAtitude, lOngitude, Channel
-        multiplier = (
-            torch.einsum(
-                "blaoc,laoc->blao", features, self.param_scale * self.multiplier_weights
-            )
-            + self.multiplier_bias
-        )
-        intercept = (
-            torch.einsum(
-                "blaoc,laoc->blao", features, self.param_scale * self.intercept_weights
-            )
-            + self.intercept_bias
+        adjustment = torch.einsum(
+            "blaoc,laoc->blao",
+            features + self.adjustment_bias,
+            self.adjustment_weights,
         )
 
-        return multiplier * predictor + intercept
+        return self.weights * predictor + self.intercept + adjustment
 
 
 class RollingWindowFeaturesLinearModel(WeeklyRollingWindowMultiplexer):
@@ -51,16 +51,28 @@ class RollingWindowFeaturesLinearModel(WeeklyRollingWindowMultiplexer):
 
 
 class EMOSFeatures(nn.Module):
-    def __init__(self, in_features, regularization=1e-9, window_size=1):
+    def __init__(self, in_features, window_size=1, regularization=1e-9, **kwargs):
         super().__init__()
         self.regularization = regularization
 
-        self.t2m_mu_model = RollingWindowFeaturesLinearModel(window_size, in_features)
-        self.t2m_sigma_model = RollingWindowFeaturesLinearModel(
-            window_size, in_features
+        self.t2m_mu_model = RollingWindowFeaturesLinearModel(
+            window_size, in_features, param_scale=FIELD_STD["t2m"], **kwargs
         )
-        self.tp_mu_model = RollingWindowFeaturesLinearModel(window_size, in_features)
-        self.tp_sigma_model = RollingWindowFeaturesLinearModel(window_size, in_features)
+        self.t2m_sigma_model = RollingWindowFeaturesLinearModel(
+            window_size, in_features, param_scale=FIELD_STD["t2m"], **kwargs
+        )
+        self.tp_mu_model = RollingWindowFeaturesLinearModel(
+            window_size,
+            in_features,
+            param_scale=FIELD_STD["tp"] ** (1.0 / 3.0),
+            **kwargs
+        )
+        self.tp_sigma_model = RollingWindowFeaturesLinearModel(
+            window_size,
+            in_features,
+            param_scale=FIELD_STD["tp"] ** (1.0 / 3.0),
+            **kwargs
+        )
 
     def __call__(self, batch):
         x = batch["features_features"]

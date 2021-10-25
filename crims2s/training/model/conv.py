@@ -1,4 +1,4 @@
-import numpy as np 
+import numpy as np
 import torch
 import torch.distributions
 import torch.nn as nn
@@ -186,25 +186,27 @@ class ConvBlock(nn.Module):
 
 
 class ConvModelJG(nn.Module):
-    def __init__(self, in_features, out_features, embedding_size, kernel_size):
+    def __init__(
+        self, in_features, out_features, embedding_size, kernel_size=(1, 1, 1)
+    ):
         super().__init__()
 
-        self.conv1 = nn.Conv3d(in_features, embedding_size, kernel_size=(1, 1, 1))
+        self.conv1 = nn.Conv3d(in_features, embedding_size, kernel_size=kernel_size)
         self.act1 = nn.LeakyReLU()
         self.bn1 = nn.BatchNorm3d(embedding_size)
 
         self.blocks = nn.ModuleList(
             [
-            ConvBlock(embedding_size, kernel_size=(3, 3, 3)),
-            ConvBlock(embedding_size, kernel_size=(3, 3, 3))]
-            )
+                ConvBlock(embedding_size, kernel_size=(5, 5, 5)),
+                ConvBlock(embedding_size, kernel_size=(5, 5, 5)),
+            ]
+        )
 
         self.conv_weeks_34 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
         self.conv_weeks_56 = nn.Conv2d(embedding_size, out_features, kernel_size=(1, 1))
 
-
     def forward(self, input):
-        x= input
+        x = input
         x = torch.transpose(x, -1, 1)
         x = torch.squeeze(x, -2)  # Swap channels and time dim.
         x = self.act1(self.bn1(self.conv1(x)))
@@ -226,8 +228,11 @@ class ConvModelJG(nn.Module):
 
 
 class ConvPostProcessingJG(DistributionModelAdapter):
-    def __init__(self, in_features, embedding_size, kernel_size=(1, 1, 1), debias=False):
-        conv_model = ConvModelJG(in_features, 4,  embedding_size, kernel_size)
+    def __init__(
+        self, in_features, embedding_size, kernel_size=(1, 1, 1), debias=False
+    ):
+        conv_model = ConvModelJG(in_features, 4, embedding_size, kernel_size)
         distribution_model = DistributionConvPostProcessing(conv_model, debias=debias)
 
-        super().__init__(distribution_model)    
+        super().__init__(distribution_model)
+

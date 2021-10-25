@@ -1,0 +1,37 @@
+defaults:
+  - dataset: ncep
+  - module: bayes
+  - model: bayes_multi_jg
+  - optimizer: spec_bayes_multi_fcn
+  - transform: full
+
+dataset:
+  include_features: True
+  val_years: 
+    - 2010
+    - 2017
+    - 2019
+  end_year: 2020
+early_stopping:
+  patience: 10
+
+unfreeze_epoch: 4
+callbacks:
+  - _target_: crims2s.training.callback.WeightModelFinetuningCallback
+    unfreeze_epoch: ${experiment.unfreeze_epoch}
+  # - _target_: crims2s.training.callback.MultiFCNFinetuningCallback
+  #   unfreeze_epoch: ${experiment.unfreeze_epoch}
+
+transform:
+  add_date: True
+
+
+
+timeout_min: 2880
+
+# experiment:
+#   weights_only_epoch: 
+
+
+batch_size: 4
+

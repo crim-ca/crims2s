@@ -11,7 +11,7 @@ optim_spec:
       - _regex_: conv_model.projection|conv_model.pretrained.classifier
         lr: 1e-4
       - _regex_: forecast_models.4
-        lr: 1e-4
+        lr: 1e-3
       - _regex_: weight_model
         lr: 1e-5
       - _regex_: forecast_models
