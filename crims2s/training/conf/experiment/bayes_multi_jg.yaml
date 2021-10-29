@@ -15,7 +15,7 @@ dataset:
 early_stopping:
   patience: 10
 
-unfreeze_epoch: 4
+unfreeze_epoch: 2
 callbacks:
   - _target_: crims2s.training.callback.WeightModelFinetuningCallback
     unfreeze_epoch: ${experiment.unfreeze_epoch}

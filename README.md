@@ -1,20 +1,21 @@
 # CRIM S2S
 
-Source code supporting the participation of the CRIM S2S team to the WMO S2S Forecast
-challenge. [Challenge Website](https://s2s-ai-challenge.github.io/).
+Source code supporting the participation of the CRIM S2S team to the [WMO S2S Forecast
+challenge](https://s2s-ai-challenge.github.io/).
 
 ## Model architecture
 
 Our model is an opportunistic mixture model. It is a blend
 of: 
 - EMOS corrected forecasts from ECMWF, ECCC and NCEP
+- CNN corrected forecast for ECMWF
 - Climatology
-- CNN corrected forecast for ECMWF.
 
 A second CNN decides the relative weights. Then, a weighted
 average of the 5 models is performed. The schematic below summarizes 
 the model.
 
+![](./s2s-model.png)
 
 We call our model opportunistic because the weighting model has 
 to detect where there is predictability and use the forecasts there.
