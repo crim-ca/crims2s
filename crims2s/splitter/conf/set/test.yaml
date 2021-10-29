@@ -1,3 +1,3 @@
-input_dir: '***BASEDIR***test-input/'
-output_dir: '***BASEDIR***processed/test-input/'
+input_dir: ${base_dir}/test-input/
+output_dir: ${base_dir}/test-input/
 label: 'forecast'

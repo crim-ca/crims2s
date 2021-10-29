@@ -7,8 +7,8 @@ setup(
     install_requires=[
         "dask",
         "hydra-core",
-        "pytorch-lightning==1.4.*",
         "hydra-submitit-launcher",
+        "pytorch-lightning",
     ],
     entry_points={
         "console_scripts": [

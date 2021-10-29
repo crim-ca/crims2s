@@ -1,16 +1,18 @@
 defaults:
   - set: train
 
+base_dir: 
+
 fields:
-  # u: 
-  #   - 200
-  #   - 850
+  u: 
+    - 200
+    - 850
   v:
     - 200
     - 850
-  # gh:
-  #   - 1000
-  #   - 500
-  #   - 200
+  gh:
+    - 1000
+    - 500
+    - 200
 center: 'ecmwf'
 n_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}

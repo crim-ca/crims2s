@@ -3,6 +3,86 @@
 Source code supporting the participation of the CRIM S2S team to the WMO S2S Forecast
 challenge. [Challenge Website](https://s2s-ai-challenge.github.io/).
 
+## Model architecture
+
+Our model is an opportunistic mixture model. It is a blend
+of: 
+- EMOS corrected forecasts from ECMWF, ECCC and NCEP
+- Climatology
+- CNN corrected forecast for ECMWF.
+
+A second CNN decides the relative weights. Then, a weighted
+average of the 5 models is performed. The schematic below summarizes 
+the model.
+
+
+We call our model opportunistic because the weighting model has 
+to detect where there is predictability and use the forecasts there.
+It has to detect where the is no opportunity for predictability and 
+use climatology in these circumstances.
+
+
+
+## Reproducing
+
+Here are the instructions to reproduce our results. The instructions
+are unfortunately longer than we would have hoped. If any problem is
+encountered during reproduction please feel free to reach out. We 
+also have the possibility to provide intermediate datasets. For
+instance if it is impossible to regenerate an ml-ready dataset using our
+code, we could provide one.
+
+### Package installation
+
+This guide assumes that a conda installation is already available.
+
+```bash
+conda create -n s2s_repro -f environment.yml
+conda activate s2s_repro
+pip install -e <path_to_our_repo>
+```
+
+### Data preparation
+
+#### Split the multi-level files into smaller chunks
+
+The NetCDF files that contain multiple vertical levels were a little bit difficult 
+to manipulate on our end. For this reason, our code assumes that there is a version
+of these files that has been split into one netcdf by vertical level. We wrote
+a small utility to do this. The splitting is only necessary for some fields from the
+ECMWF model. The list of fields that should be split is configured in the 
+`crims2s/splitter/conf/config.yaml`.
+
+```
+s2s_split_plev base_dir=<path_to_s2s_data> set=train
+s2s_split_plev base_dir=<path_to_s2s_data> set=test
+```
+
+Here, `<path_to_s2s_data>` should contain the data pulled from climetlab, so
+for instance `<path_to_s2s_data>/training-input` should exist and contain the 
+necessary model files.
+
+When this script is done, there should be new files named `ecmwf-hindcast-u200-20200102.nc` and so on.
+
+
+#### Make an ML-Ready dataset
+
+
+
+### Model training
+
+
+#### Training EMOS models
+
+
+#### Training the convolutional ensemble model
+
+
+### Validation
+
+
+
+
 ## Getting Started
 
 ### Notebooks

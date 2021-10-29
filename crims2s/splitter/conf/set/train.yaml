@@ -1,3 +1,3 @@
-input_dir: '***BASEDIR***training-input/'
-output_dir: '***BASEDIR***processed/training-input/'
+input_dir: ${base_dir}/training-input/
+output_dir: ${base_dir}/training-input/
 label: 'hindcast'

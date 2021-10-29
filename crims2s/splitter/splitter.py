@@ -2,7 +2,6 @@ import hydra
 import logging
 import multiprocessing
 import pathlib
-import tqdm
 import xarray as xr
 
 
@@ -23,6 +22,8 @@ def split_one_file(input_file, output_dir, levels):
         new_path = output_path / new_filename
 
         subset = d.sel(plev=[level])
+
+        _logger.info(f"Writing {new_path}...")
         subset.to_netcdf(new_path, mode="w")
 
 
