@@ -23,7 +23,7 @@ It has to detect where the is no opportunity for predictability and
 use climatology in these circumstances.
 
 The EMOS models only use the predicted variable. That is, is we want to correct
-the `t2m` variable, we only use `t2m` as a predictor variable.
+the ECCC `t2m` variable, we only use ECCC `t2m` as a predictor variable.
 
 The convolutionnal models use 18 features as predictors. Most of the predictors
 are field from the ECMWF hindcast/forecast. The list of these variable is available
