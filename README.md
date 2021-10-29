@@ -15,14 +15,28 @@ A second CNN decides the relative weights. Then, a weighted
 average of the 5 models is performed. The schematic below summarizes 
 the model.
 
-![](./s2s-model.png)
+![Model Schematic](./s2s-model.png)
 
 We call our model opportunistic because the weighting model has 
 to detect where there is predictability and use the forecasts there.
 It has to detect where the is no opportunity for predictability and 
 use climatology in these circumstances.
 
+The EMOS models only use the predicted variable. That is, is we want to correct
+the `t2m` variable, we only use `t2m` as a predictor variable.
 
+The convolutionnal models use 18 features as predictors. Most of the predictors
+are field from the ECMWF hindcast/forecast. The list of these variable is available
+in the `crims2s/conf/fields/both_easy.yaml` file. Some of the predictors used by the
+convolutional models are constant throughout all the training examples. These
+predictors are
+- latitude and longitude
+- orog (downloaded [here](https://iridl.ldeo.columbia.edu/SOURCES/.ECMWF/.S2S/index.html?Set-Language=fr)).
+- day of year.
+
+Countless other decisions were taken when designing this pipeline. Hopefully they
+can be better communicated in the future. In the meantime, the source code in this
+repository consists in a rough desription of these decisions.
 
 ## Reproducing
 
