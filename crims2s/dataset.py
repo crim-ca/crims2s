@@ -51,7 +51,7 @@ class S2SDataset(torch.utils.data.Dataset):
                 year_of_filename = int(f.stem.split("_")[2][:4])
 
                 if (name_filter is None or name_filter(f.name)) and (
-                    not years or year_of_filename in years
+                    years is None or year_of_filename in years
                 ):
                     files.append(f)
         self.files = sorted(files)

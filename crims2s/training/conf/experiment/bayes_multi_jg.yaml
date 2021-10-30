@@ -13,7 +13,7 @@ dataset:
     - 2019
   end_year: 2020
 early_stopping:
-  patience: 10
+  patience: 5
 
 unfreeze_epoch: 0
 callbacks:

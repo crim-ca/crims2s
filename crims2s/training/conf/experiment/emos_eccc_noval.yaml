@@ -1,0 +1,19 @@
+defaults:
+- dataset: repro
+- module: tercile
+- model: emos_eccc_rolling
+- optimizer: spec_emos_others_noval
+- transform: emos_cube
+
+timeout_min: 360
+
+dataset:
+  include_features: False
+  end_year: 2018
+batch_size: 16
+accumulate_grad_batches: 1
+max_epochs: 50
+checkpoint_monitor: RPS_Epoch/All/Train
+
+rolling_window_size: 20
+

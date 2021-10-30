@@ -1,0 +1,23 @@
+# This configuration trains an ECMWF EMOS model without validation data.
+# The training schedule is fully fixed, because we have no validation score to 
+# inform lr adjustments and what not.
+
+defaults:
+- dataset: repro
+- module: tercile
+- model: emos_ecmwf_rolling
+- optimizer: spec_emos_noval
+- transform: emos_cube
+
+
+timeout_min: 360
+
+dataset:
+  include_features: False
+  val_years: 
+  end_year: 2020
+batch_size: 16
+accumulate_grad_batches: 1
+max_epochs: 15
+checkpoint_monitor: RPS_Epoch/All/Train
+rolling_window_size: 20

@@ -3,6 +3,36 @@
 Source code supporting the participation of the CRIM S2S team to the [WMO S2S Forecast
 challenge](https://s2s-ai-challenge.github.io/).
 
+Our source code lives in a distinct git repository because of the size of the 
+submitted code. We copied the safeguards/checklists we could find in this README
+to have the same documentation as if we had submitted 
+
+## Safeguards
+
+This section was copied from the [submission template](https://renkulab.io/gitlab/aaron.spring/s2s-ai-challenge-template/-/blob/master/notebooks/ML_forecast_template.ipynb).
+
+### Ressources used
+
+
+
+
+### Safeguards to prevent overfitting
+If the organizers suspect overfitting, your contribution can be disqualified.
+* [ ] We did not use 2020 observations in training (explicit overfitting and cheating)
+* [ ] We did not repeatedly verify my model on 2020 observations and incrementally improved my RPSS (implicit overfitting)
+* [ ] We provide RPSS scores for the training period with script skill_by_year, see in section 6.3 predict.
+* [ ] We tried our best to prevent data leakage?wprov=sfti1).
+* [ ] We honor the train-validate-test split principle. This means that the hindcast data is split into train and validate, whereas test is withheld.
+* [ ] We did not use test explicitly in training or implicitly in incrementally adjusting parameters.
+* [ ] We considered cross-validation.
+
+### Safeguards for Reproducibility
+Notebook/code must be independently reproducible from scratch by the organizers (after the competition), if not possible: no prize
+* [ ] All training data is publicly available (no pre-trained private neural networks, as they are not reproducible for us)
+* [ ] Code is well documented, readable and reproducible.
+* [ ] Code to reproduce training and predictions is preferred to run within a day on the described architecture. If the training takes longer than a day, please justify why this is needed. Please do not submit training piplelines, which take weeks to train.
+
+
 ## Model architecture
 
 Our model is an opportunistic mixture model. It is a blend

@@ -41,10 +41,13 @@ class CompositeFilter:
 def make_datasets(dataset_cfg, transform_cfg):
     transform = hydra.utils.instantiate(transform_cfg)
 
-    train_years = sorted(
-        list(set(range(2000, dataset_cfg.end_year)) - set(dataset_cfg.val_years))
-    )
-    val_years = sorted(list(dataset_cfg.val_years))
+    if "val_years" in dataset_cfg and dataset_cfg.val_years:
+        val_years = set(dataset_cfg.val_years)
+    else:
+        val_years = set({})
+
+    train_years = sorted(list(set(range(2000, dataset_cfg.end_year)) - val_years))
+    val_years = list(val_years)
 
     _logger.info(f"train year: {train_years}")
     _logger.info(f"val years: {val_years}")
@@ -133,7 +136,11 @@ def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
     )
     mlflow.log_hyperparams(cfg)
 
-    checkpointer = ModelCheckpoint(monitor="val_loss")
+    if "checkpoint_monitor" in cfg:
+        checkpoint_monitor = cfg.checkpoint_monitor
+    else:
+        checkpoint_monitor = "val_loss"
+    checkpointer = ModelCheckpoint(monitor=checkpoint_monitor)
 
     other_callbacks = []
     if "callbacks" in cfg:
@@ -158,7 +165,7 @@ def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
         default_root_dir="./lightning/",
         gpus=backend_cfg.gpus,
         accelerator=backend_cfg.accelerator,
-        max_epochs=cfg.max_epochs,
+        max_epochs=cfg.get("max_epochs", 100),
         accumulate_grad_batches=cfg.accumulate_grad_batches,
         limit_train_batches=cfg.limit_train_batches,
     )
@@ -175,6 +182,7 @@ def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
         plt.savefig(filename)
         _logger.info(f"Saved LR curve: {os.getcwd() + '/' + filename}.")
     else:
+        val_dataloader = val_dataloader if len(val_dataloader) > 0 else None
         trainer.fit(lightning_module, train_dataloader, val_dataloader)
         best_score = float(checkpointer.best_model_score.cpu())
         mlflow.log_metrics({"val_loss_min": best_score})

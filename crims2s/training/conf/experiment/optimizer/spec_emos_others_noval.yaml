@@ -1,0 +1,22 @@
+# Spec for NCEP and ECCC when training EMOS with no validation set.
+
+_target_: crims2s.training.optim_spec.create_optim
+_recursive_: False
+_convert_: partial
+optim_spec:
+  - _target_: torch.optim.Adam
+    lr: 2e-4
+    params:
+      - _regex_: 't2m_model'
+    scheduler: 
+      _target_: torch.optim.lr_scheduler.StepLR
+      gamma: 0.1
+      step_size: 20
+  - _target_: torch.optim.Adam
+    lr: 2e-3
+    params:
+      - _regex_: 'tp_model'
+    scheduler: 
+      _target_: torch.optim.lr_scheduler.StepLR
+      gamma: 0.1
+      step_size: 20
