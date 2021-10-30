@@ -147,7 +147,7 @@ class TercilesConvPostProcessing(DistributionModelAdapter):
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, embedding_size, kernel_size=(3, 3, 3)):
+    def __init__(self, embedding_size, kernel_size=(3, 3, 3), padding=(1, 1, 1)):
         super().__init__()
 
         if kernel_size[0] < 3:
@@ -191,7 +191,9 @@ class ConvModelJG(nn.Module):
     ):
         super().__init__()
 
-        self.conv1 = nn.Conv3d(in_features, embedding_size, kernel_size=kernel_size)
+        self.conv1 = nn.Conv3d(
+            in_features, embedding_size, kernel_size=(1, 1, 1), padding=0
+        )
         self.act1 = nn.LeakyReLU()
         self.bn1 = nn.BatchNorm3d(embedding_size)
 

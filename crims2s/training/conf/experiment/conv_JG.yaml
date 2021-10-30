@@ -10,5 +10,7 @@ early_stopping:
   patience: 10
 
 batch_size: 4
+accumulate_grad_batches: 1
+timeout_min: 4320
 
 optimizer.weight_decay: 1e-6

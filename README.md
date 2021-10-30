@@ -159,11 +159,25 @@ s2s_train experiment=emos_ncep experiment.dataset.dataset_dir=<dataset_dir>
 
 Run
 ```
-
+s2s_train experiment=conv_JG experiment.dataset.dataset_dir=<dataset_dir>
 ```
 
 
 #### Training the convolutional ensemble model
+
+Using the working directories that we noted when training the 4 models, we can
+now launch the training of a convolutionnal ensemble model.
+
+To do so, first edit the `crims2s/training/conf/experiment/models/bayes_multi_jg.yaml`
+file. Replace all the `checkpoint_dir` keys with the appropriate working directory.
+Note that you don't have to specify precisely where the checkpoint is. Only provide
+the working directory and the checkpoint will be found automatically.
+
+Once the checkpoints are specified, run
+```
+s2s_train experiment=bayes_multi_jg experiment.dataset.dataset_dir=<dataset_dir>
+```
+
 
 
 ### Validation
