@@ -7,9 +7,9 @@ challenge](https://s2s-ai-challenge.github.io/).
 
 Our model is an opportunistic mixture model. It is a blend
 of: 
-- EMOS corrected forecasts from ECMWF, ECCC and NCEP
-- CNN corrected forecast for ECMWF
-- Climatology
+* EMOS corrected forecasts from ECMWF, ECCC and NCEP
+* CNN corrected forecast for ECMWF
+* Climatology
 
 A second CNN decides the relative weights. Then, a weighted
 average of the 5 models is performed. The schematic below summarizes 
@@ -22,17 +22,23 @@ to detect where there is predictability and use the forecasts there.
 It has to detect where the is no opportunity for predictability and 
 use climatology in these circumstances.
 
-The EMOS models only use the predicted variable. That is, is we want to correct
-the ECCC `t2m` variable, we only use ECCC `t2m` as a predictor variable.
+The EMOS models only use the predicted parameter as a predictor. That is, is we want to correct
+the mean of the ECCC `t2m` variable, we only use the mean of the ECCC `t2m` as a predictor variable. Our EMOS models are used to correct 4 parameters: `t2m` mean, `t2m` standard deviation, `tp` mean and `tp` standard deviation. To make the precipitation data
+look a little more like normally distributed data, we apply a cubic root on the 
+precipitation values before we correct them with EMOS.
 
 The convolutionnal models use 18 features as predictors. Most of the predictors
 are field from the ECMWF hindcast/forecast. The list of these variable is available
 in the `crims2s/conf/fields/both_easy.yaml` file. Some of the predictors used by the
 convolutional models are constant throughout all the training examples. These
 predictors are
-- latitude and longitude
-- orog (downloaded [here](https://iridl.ldeo.columbia.edu/SOURCES/.ECMWF/.S2S/index.html?Set-Language=fr)).
-- day of year.
+* latitude and longitude
+* orog (downloaded [here](https://iridl.ldeo.columbia.edu/SOURCES/.ECMWF/.S2S/index.html?Set-Language=fr)).
+* day of year.
+
+The optimization is done by minimizing the RPS for each predicted variable. We use
+the Adam optimizer throughout, although the hyperparameters vary if we are 
+training an EMOS or a convolutional model.
 
 Countless other decisions were taken when designing this pipeline. Hopefully they
 can be better communicated in the future. In the meantime, the source code in this
@@ -82,12 +88,79 @@ When this script is done, there should be new files named `ecmwf-hindcast-u200-2
 
 #### Make an ML-Ready dataset
 
+The next step is to rehash the data so that it can be batched easily. This is done
+using the `s2s_mldataset` script. This script generates one file per forecast.
+
+The `s2s_mldataset` program takes the `base_dir` parameter as input. In `base_dir`
+it should be able to find the 
+* `training-input/`
+* `test-input/`
+* `hindcast-like-observations_2000-2019_biweekly_tercile-edges.nc`
+* `hindcast-like_observations_2000-2019_biweekly_deterministic.nc`
+* `hindcast-like_observations_2000-2019_biweekly_terciled.nc`    
+* `forecast-like_observations_2020_biweekly_deterministic.nc`
+* `forecast-like_observations_2020_biweekly_terciled.nc`     
+
+
+To generate the zeroth example of year 2000, run
+```
+s2s_mldataset base_dir=<base_dir> output_dir=<dataset_dir> index=0 set.year=2000
+```
+
+To generate an example for the third forecast of every year, run
+```
+s2s_mldataset base_dir=<base_dir> output_dir=<dataset_dir> index=2
+```
+
+To generate the whole training set, run
+```
+s2s_mldataset base_dir=<base_dir> output_dir=<dataset_dir> index="range(0,53)" -m
+```
+Keep in mind that this command was usually run in parallel on our cluster. This
+might take a while.
+
+To generate the test set, run
+```
+s2s_mldataset base_dir=<base_dir> output_dir=<test_dataset_dir> index="range(0,53)" set=test -m
+```
 
 
 ### Model training
 
+The overall procedure is to 
+1. Train EMOS models for ECMWF, NCEP and ECCC
+2. Train a convolutionnal post-processing model for ECMWF
+3. Use checkpoints from the above models to initialize an ensemble model. Train the 
+convolutional weight model that glues all the above models together.
 
 #### Training EMOS models
+
+Every time an EMOS model is trained, the logger prints the current working
+directory. Remember what that directory is. It will be useful we we want to load
+the checkpoints to initialize an ensemble model later.
+
+To train ECMWF EMOS, run
+```
+s2s_train experiment=emos experiment.dataset.dataset_dir=<dataset_dir>
+```
+
+To train ECCC EMOS, run
+```
+s2s_train experiment=emos_eccc experiment.dataset.dataset_dir=<dataset_dir>
+```
+
+To train NCEP EMOS, run
+```
+s2s_train experiment=emos_ncep experiment.dataset.dataset_dir=<dataset_dir>
+```
+
+
+#### Training the convolutional post-processing model
+
+Run
+```
+
+```
 
 
 #### Training the convolutional ensemble model

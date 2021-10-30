@@ -227,7 +227,7 @@ class S2STercilesModule(pl.LightningModule):
             )
 
     def make_weight_mask(self, batch, use_dry_mask=False):
-        weight_mask = torch.ones(121, 240, device=batch["obs_t2m"].device)
+        weight_mask = torch.ones(121, 240, device=batch["terciles_t2m"].device)
 
         latitude = batch["latitude"]
 

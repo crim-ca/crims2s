@@ -66,7 +66,7 @@ def make_datasets(dataset_cfg, transform_cfg):
 
     train_dataset = TransformedDataset(
         S2SDataset(
-            dataset_cfg.dataset_dir,
+            hydra.utils.to_absolute_path(dataset_cfg.dataset_dir),
             years=train_years,
             name_filter=name_filter,
             include_features=dataset_cfg.include_features,
@@ -76,7 +76,7 @@ def make_datasets(dataset_cfg, transform_cfg):
     )
     val_dataset = TransformedDataset(
         S2SDataset(
-            dataset_cfg.dataset_dir,
+            hydra.utils.to_absolute_path(dataset_cfg.dataset_dir),
             years=val_years,
             name_filter=name_filter,
             include_features=dataset_cfg.include_features,
@@ -185,6 +185,8 @@ def cli(cfg):
     if "env" in cfg and cfg.env is not None:
         for key, value in cfg.env:
             os.environ[key] = value
+
+    _logger.info(f"Working directory: {os.getcwd()}")
 
     run_experiment(
         cfg.experiment,

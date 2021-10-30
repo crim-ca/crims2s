@@ -1,5 +1,5 @@
 defaults:
-  - dataset: ncep
+  - dataset: repro
   - module: bayes
   - model: bayes_multi_jg
   - optimizer: spec_bayes_multi_fcn

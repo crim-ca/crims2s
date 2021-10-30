@@ -1,13 +1,11 @@
 defaults:
-- dataset: ncep
+- dataset: repro
 - module: tercile
 - model: emos_ncep_rolling
 - optimizer: spec_emos
 - transform: emos_cube
 
-hydra:
-  launcher:
-    timeout_min: 120
+timeout_min: 360
 
 dataset:
   include_features: False
@@ -16,11 +14,10 @@ dataset:
   end_year: 2011
   ncep_filter: True
 batch_size: 16
-trainer:
-  accumulate_grad_batches: 1
+accumulate_grad_batches: 1
 
-rolling_window_size: 3
+rolling_window_size: 20
 
 
 early_stopping:
-  patience: 10
+  patience: 5

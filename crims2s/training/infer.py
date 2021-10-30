@@ -8,7 +8,7 @@ import xarray as xr
 from ..dataset import S2SDataset, TransformedDataset
 from ..transform import ExampleToPytorch, CompositeTransform
 from ..util import ECMWF_FORECASTS, collate_with_xarray
-from .lightning import S2SBayesModelModule, S2STercilesModule
+from .lightning import S2STercilesModule
 from .util import find_checkpoint_file
 
 _logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ def cli(cfg):
 
     datasets_of_examples = []
     for example in tqdm.tqdm(dataloader):
-        example_forecast = example["obs"]
+        example_forecast = example["terciles"]
 
         pytorch_example = last_transform(example)
         pytorch_example = example_to_cuda(pytorch_example)

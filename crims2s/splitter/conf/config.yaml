@@ -1,7 +1,8 @@
 defaults:
   - set: train
 
-base_dir: 
+base_dir: ***HOME***fast_scratch/s2s/repro
+
 
 fields:
   u: 
@@ -16,3 +17,4 @@ fields:
     - 200
 center: 'ecmwf'
 n_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
+overwrite: False

@@ -123,7 +123,7 @@ class AddMetadata:
     """Add various metadata to the example dict."""
 
     def __call__(self, example):
-        model = example["obs"]
+        model = example["terciles"]
         year = int(model.forecast_time.dt.year)
         month = int(model.forecast_time.dt.month)
         day = int(model.forecast_time.dt.day)
@@ -247,7 +247,8 @@ class CubeRootTP:
 
     def __call__(self, example):
         for k in ["obs_tp", "edges_tp"]:
-            example[k] = example[k] ** (1.0 / 3.0)
+            if k in example:
+                example[k] = example[k] ** (1.0 / 3.0)
 
         return example
 
@@ -257,7 +258,7 @@ class AddLatLonFeature:
         pass
 
     def __call__(self, example):
-        obs = example["obs"]
+        obs = example["terciles"]
         lat_array = obs["latitude"].assign_coords(variable="lat")
         lat_array = (lat_array / lat_array.max()).astype("float32")
 
@@ -311,7 +312,7 @@ class LongitudeRoll:
         pass
 
     def __call__(self, example):
-        obs = example["obs"]
+        obs = example["terciles"]
         longitude_length = obs.sizes["longitude"]
 
         roll = random.randint(0, longitude_length)
@@ -400,7 +401,7 @@ def full_transform(
 
     transforms = [
         *xarray_transforms,
-        LinearModelAdapter(make_distributions=make_distributions),
+        # LinearModelAdapter(make_distributions=make_distributions),
         AddMetadata(),
         ExampleToPytorch(),
         CubeRootTP(),

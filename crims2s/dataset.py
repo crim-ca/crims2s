@@ -66,7 +66,7 @@ class S2SDataset(torch.utils.data.Dataset):
         f = self.files[idx]
         _logger.debug(f"Opening example: {f}")
 
-        groups_to_read = ["/obs", "/terciles", "/edges", "/model_parameters"]
+        groups_to_read = ["/terciles", "/edges", "/model_parameters"]
 
         if self.include_features:
             groups_to_read.append("/features")

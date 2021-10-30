@@ -8,7 +8,7 @@ import xarray as xr
 _logger = logging.getLogger(__name__)
 
 
-def split_one_file(input_file, output_dir, levels):
+def split_one_file(input_file, output_dir, levels, overwrite=False):
     f = pathlib.Path(input_file)
     output_path = pathlib.Path(output_dir)
 
@@ -23,15 +23,18 @@ def split_one_file(input_file, output_dir, levels):
 
         subset = d.sel(plev=[level])
 
-        _logger.info(f"Writing {new_path}...")
-        subset.to_netcdf(new_path, mode="w")
+        if new_path.is_file() and not overwrite:
+            _logger.info(f"File {new_path} already exists. Skipping.")
+        else:
+            _logger.info(f"Writing {new_path}...")
+            subset.to_netcdf(new_path, mode="w")
 
 
 @hydra.main(config_path="conf", config_name="config")
 def cli(cfg):
     for field in cfg.fields:
         _logger.info(f"Processing field {field}")
-        input_path = pathlib.Path(cfg.set.input_dir)
+        input_path = pathlib.Path(hydra.utils.to_absolute_path(cfg.set.input_dir))
         input_files = [
             f
             for f in input_path.iterdir()
@@ -40,6 +43,12 @@ def cli(cfg):
 
         with multiprocessing.Pool(int(cfg.n_workers)) as pool:
             fn_inputs = [
-                (f, cfg.set.output_dir, cfg.fields[field]) for f in input_files
+                (
+                    f,
+                    hydra.utils.to_absolute_path(cfg.set.output_dir),
+                    cfg.fields[field],
+                    cfg.overwrite,
+                )
+                for f in input_files
             ]
             pool.starmap(split_one_file, fn_inputs)

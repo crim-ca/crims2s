@@ -247,7 +247,10 @@ class NCEPModelParameters(ExamplePartMaker):
 
     def __call__(self, year, example):
         model = example["model"]
-        if (year >= 1999 and year <= 2010) and model.forecast_monthday not in ['0102', '1231']:
+        if (year >= 1999 and year <= 2010) and model.forecast_monthday not in [
+            "0102",
+            "1231",
+        ]:
             return self.make_ncep_example_part(year, example)
         elif year == 2020:
             return self.make_ncep_example_part(year, example)
@@ -269,6 +272,7 @@ class NCEPModelParameters(ExamplePartMaker):
 
 def datestrings_from_input_dir(input_dir, center):
     input_path = pathlib.Path(input_dir)
+    print(input_path)
     return sorted(
         [
             x.stem.split("-")[-1]
@@ -408,9 +412,11 @@ def cli(cfg):
 
     _logger.info(f"Will only operate on datestrings: {datestrings}")
 
-    edges = xr.open_dataset(cfg.set.aggregated_obs.edges)
-    obs_terciled = xr.open_dataset(cfg.set.aggregated_obs.terciled)
-    raw_obs = read_raw_obs(cfg.raw_obs.t2m_file, cfg.raw_obs.pr_file)
+    edges = xr.open_dataset(hydra.utils.to_absolute_path(cfg.set.aggregated_obs.edges))
+    obs_terciled = xr.open_dataset(
+        hydra.utils.to_absolute_path(cfg.set.aggregated_obs.terciled)
+    )
+    # raw_obs = read_raw_obs(cfg.raw_obs.t2m_file, cfg.raw_obs.pr_file)
 
     for datestring in datestrings:
         _logger.info(f"Processing datestring {datestring}...")
@@ -500,7 +506,7 @@ def cli(cfg):
             ),
             ("model", ModelExamplePartMaker(model, n_realizations=cfg.n_realizations)),
             ("terciles", TercilesExamplePartMaker(obs_terciled)),
-            ("obs", ObsExamplePartMaker(raw_obs, cfg.set.valid_threshold)),
+            # ("obs", ObsExamplePartMaker(raw_obs, cfg.set.valid_threshold)),
             ("edges", EdgesExamplePartMaker(edges)),
             (
                 "model_parameters",

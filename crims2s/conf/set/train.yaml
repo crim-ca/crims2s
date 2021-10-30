@@ -1,10 +1,10 @@
 aggregated_obs:
-  deterministic: ***BASEDIR***/from-template-lfs/hindcast-like_observations_2000-2019_biweekly_deterministic.nc
-  terciled: ***BASEDIR***/from-template-lfs/hindcast-like_observations_2000-2019_biweekly_terciled.nc
-  edges: ***BASEDIR***/from-template-lfs/hindcast-like-observations_2000-2019_biweekly_tercile-edges.nc
+  deterministic: ${base_dir}/hindcast-like_observations_2000-2019_biweekly_deterministic.nc
+  terciled: ${base_dir}/hindcast-like_observations_2000-2019_biweekly_terciled.nc
+  edges: ${base_dir}/hindcast-like-observations_2000-2019_biweekly_tercile-edges.nc
 input:
-  flat: '***BASEDIR***training-input'
-  plev: '***BASEDIR***processed/training-input'
+  flat: ${base_dir}/training-input
+  plev: ${base_dir}/training-input
 last_forecast: "2019-11-20"
 year:
 file_label: "hindcast"
