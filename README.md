@@ -13,25 +13,50 @@ This section was copied from the [submission template](https://renkulab.io/gitla
 
 ### Ressources used
 
+* Data preparation done over a SLURM cluster.
+* Training performed on GPUs, most often a GTX 1080 Ti. No multi-GPU setup ended up 
+being used in our final pipeline.
 
+### Data used
+
+* Multiple fields from the ECMWF hindcasts/forecasts. See the `crims2s/conf/fields/both_easy.yaml` file for a complete list.
+* `t2m` and `tp` from NCEP and ECCC.
+* `orog` for ECMWF, which was not downloaded through renku, but we provide the file in our repo.
 
 
 ### Safeguards to prevent overfitting
 If the organizers suspect overfitting, your contribution can be disqualified.
-* [ ] We did not use 2020 observations in training (explicit overfitting and cheating)
-* [ ] We did not repeatedly verify my model on 2020 observations and incrementally improved my RPSS (implicit overfitting)
+* [x] We did not use 2020 observations in training (explicit overfitting and cheating)
+* [x] We did not repeatedly verify my model on 2020 observations and incrementally improved my RPSS (implicit overfitting)
 * [ ] We provide RPSS scores for the training period with script skill_by_year, see in section 6.3 predict.
-* [ ] We tried our best to prevent data leakage?wprov=sfti1).
-* [ ] We honor the train-validate-test split principle. This means that the hindcast data is split into train and validate, whereas test is withheld.
-* [ ] We did not use test explicitly in training or implicitly in incrementally adjusting parameters.
-* [ ] We considered cross-validation.
+* [x] We tried our best to prevent data leakage.
+* [x] We honor the train-validate-test split principle. This means that the hindcast data is split into train and validate, whereas test is withheld.
+    - In the final push to improve our results, we use the validation set for training.
+    That is, we ran the training once with a validation set to determine all the hyperparameters. Then we fixed the hyperparameters and ran the training again using
+    the training set + the validation set. The test set is in a separate folder and
+    was never loaded for training purposes.
+* [x] We did not use test explicitly in training or implicitly in incrementally adjusting parameters.
+* [x] We considered cross-validation.
+    - Our validation strategy was not precisely a cross validation. Since we use 
+    data from all three centers (ECMWF, ECCC and NCEP), we used years 2010, 2017 and 2019 
+    as validation years. That way, we have at least one validation year where the 
+    data is available for each center.
 
 ### Safeguards for Reproducibility
 Notebook/code must be independently reproducible from scratch by the organizers (after the competition), if not possible: no prize
-* [ ] All training data is publicly available (no pre-trained private neural networks, as they are not reproducible for us)
-* [ ] Code is well documented, readable and reproducible.
-* [ ] Code to reproduce training and predictions is preferred to run within a day on the described architecture. If the training takes longer than a day, please justify why this is needed. Please do not submit training piplelines, which take weeks to train.
-
+* [x] All training data is publicly available (no pre-trained private neural networks, as they are not reproducible for us)
+    - All the data was downloaded from renku, except the orography which we provide in the repo.
+* [x] Code is well documented, readable and reproducible.
+* [x] Code to reproduce training and predictions is preferred to run within a day on the described architecture. If the training takes longer than a day, please justify why this is needed. Please do not submit training piplelines, which take weeks to train.
+    - Our models comprises deep neural architecture which typically train over many days 
+    depending on the GPU power used. In our case, the training of parts of the models 
+    lasts about two days on a GTX 1080 ti. There training times are not out of the ordinary
+    for a convolutional neural network in our experience.
+    - The data preparation step lasts about an hour for us, but is is done using about 53 
+    jobs in parallel on a computing cluster. That means that it could take more than 24hrs 
+    if only consumer-grade equipment is used. The usage of so many data is justified by
+    common principles in deep machine learning where data volumes typically improve 
+    model performance.
 
 ## Model architecture
 
@@ -63,7 +88,7 @@ in the `crims2s/conf/fields/both_easy.yaml` file. Some of the predictors used by
 convolutional models are constant throughout all the training examples. These
 predictors are
 * latitude and longitude
-* orog (downloaded [here](https://iridl.ldeo.columbia.edu/SOURCES/.ECMWF/.S2S/index.html?Set-Language=fr)).
+* orog (downloaded [here](https://iridl.ldeo.columbia.edu/SOURCES/.ECMWF/.S2S/index.html?Set-Language=fr)) and available in the root of our repo.
 * day of year.
 
 The optimization is done by minimizing the RPS for each predicted variable. We use
