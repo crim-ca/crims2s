@@ -108,7 +108,7 @@ def cli(cfg):
 
     dataset = TransformedDataset(
         S2SDataset(
-            cfg.test_dataset_dir,
+            hydra.utils.to_absolute_path(cfg.test_dataset_dir),
             years=years,
             name_filter=name_filter,
             include_features=cfg.experiment.dataset.load_features,

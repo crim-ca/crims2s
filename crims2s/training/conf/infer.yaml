@@ -16,8 +16,8 @@ end: 2021
 checkpoint_dir: ???
 output_file: ???
 
-
-test_dataset_dir: ***BASEDIR***/mlready/2021-09-26-ncep-test
+test_dataset_dir: ???
+#test_dataset_dir: ***BASEDIR***/mlready/2021-09-26-ncep-test
 
 
 # Default values for the experiment. They are meant to be overridden by the
