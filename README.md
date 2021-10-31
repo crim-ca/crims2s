@@ -13,7 +13,8 @@ This section was copied from the [submission template](https://renkulab.io/gitla
 
 ### Ressources used
 
-* Data preparation done over a SLURM cluster.
+* Data preparation done over a SLURM cluster. Data preparation typically done over
+ 53 8-core jobs and a distributed file storage system.
 * Training performed on GPUs, most often a GTX 1080 Ti. No multi-GPU setup ended up 
 being used in our final pipeline.
 
@@ -28,7 +29,7 @@ being used in our final pipeline.
 If the organizers suspect overfitting, your contribution can be disqualified.
 * [x] We did not use 2020 observations in training (explicit overfitting and cheating)
 * [x] We did not repeatedly verify my model on 2020 observations and incrementally improved my RPSS (implicit overfitting)
-* [ ] We provide RPSS scores for the training period with script skill_by_year, see in section 6.3 predict.
+* [x] We provide RPSS scores for the training period with script skill_by_year, see in section 6.3 predict.
 * [x] We tried our best to prevent data leakage.
 * [x] We honor the train-validate-test split principle. This means that the hindcast data is split into train and validate, whereas test is withheld.
     - In the final push to improve our results, we use the validation set for training.
@@ -196,21 +197,24 @@ the checkpoints to initialize an ensemble model later.
 
 To train ECMWF EMOS, run
 ```
-s2s_train experiment=emos experiment.dataset.dataset_dir=<dataset_dir>
+s2s_train experiment=emos_noval experiment.dataset.dataset_dir=<dataset_dir>
 ```
 
 To train ECCC EMOS, run
 ```
-s2s_train experiment=emos_eccc experiment.dataset.dataset_dir=<dataset_dir>
+s2s_train experiment=emos_eccc_noval experiment.dataset.dataset_dir=<dataset_dir>
 ```
 
 To train NCEP EMOS, run
 ```
-s2s_train experiment=emos_ncep experiment.dataset.dataset_dir=<dataset_dir>
+s2s_train experiment=emos_ncep_noval experiment.dataset.dataset_dir=<dataset_dir>
 ```
 
 
 #### Training the convolutional post-processing model
+
+This model is a lot longer to train. On our infrastructure it would take approximately
+three days on a GTX 1080ti.
 
 Run
 ```
@@ -230,9 +234,8 @@ the working directory and the checkpoint will be found automatically.
 
 Once the checkpoints are specified, run
 ```
-s2s_train experiment=bayes_multi_jg experiment.dataset.dataset_dir=<dataset_dir>
+s2s_train experiment=bayes_multi_jg_noval experiment.dataset.dataset_dir=<dataset_dir>
 ```
-
 
 
 ### Validation
@@ -241,6 +244,11 @@ Once a model is trained, you can run it on the 2020 data for verification purpos
 To do so, run
 
 ```
-s2s_infer checkpoint_dir=<ensemble_model_checkpoint_dir> output_file=model_output.nc test_dataset_dir=<test_dataset_dir>
+s2s_infer experiment=bayes_multi_jg_noval checkpoint_dir=<ensemble_model_checkpoint_dir> output_file=model_output.nc test_dataset_dir=<test_dataset_dir>
 ```
 The script will let you know where your output file has been stored.
+
+To run inference on the training data use
+```
+s2s_infer experiment=bayes_multi_jg_noval checkpoint_dir=<checkpoint_dir> output_file=<output_file> test_dataset_dir=<train_dataset_dir>
+```

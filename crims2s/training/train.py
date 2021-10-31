@@ -182,6 +182,7 @@ def run_experiment(cfg, backend_cfg, num_workers=4, lr_find=False):
         plt.savefig(filename)
         _logger.info(f"Saved LR curve: {os.getcwd() + '/' + filename}.")
     else:
+        print(len(val_dataloader))
         val_dataloader = val_dataloader if len(val_dataloader) > 0 else None
         trainer.fit(lightning_module, train_dataloader, val_dataloader)
         best_score = float(checkpointer.best_model_score.cpu())

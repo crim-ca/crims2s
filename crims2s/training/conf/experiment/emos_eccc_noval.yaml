@@ -8,6 +8,7 @@ defaults:
 timeout_min: 360
 
 dataset:
+  val_years: 
   include_features: False
   end_year: 2018
 batch_size: 16

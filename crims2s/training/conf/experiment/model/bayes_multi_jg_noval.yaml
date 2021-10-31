@@ -1,0 +1,40 @@
+_target_: crims2s.training.model.bayes.MultiCenterBayesianUpdateModel
+bias_correction: False
+forecast_models:
+  - _target_: crims2s.training.model.bayes.ClimatologyModel
+  - _target_: crims2s.training.model.util.ModelWithCheckpoint
+    model:
+      _target_: crims2s.training.model.bayes.RollingECMWFWrapper
+    remove_prefix: model.
+    checkpoint_path: ***BASEDIR***/runs/train/outputs/2021-10-30/15-31-50
+  - _target_: crims2s.training.model.util.ModelWithCheckpoint
+    model:
+      _target_: crims2s.training.model.bayes.RollingECCCWrapper
+    remove_prefix: model.
+    checkpoint_path: ***BASEDIR***/runs/train/outputs/2021-10-30/15-41-32
+  - _target_: crims2s.training.model.util.ModelWithCheckpoint
+    model:
+      _target_: crims2s.training.model.bayes.RollingNCEPWrapper
+    remove_prefix: model.
+    checkpoint_path: ***BASEDIR***/runs/train/outputs/2021-10-30/15-37-14
+  - _target_: crims2s.training.model.util.ModelWithCheckpoint
+    remove_prefix: model.
+    checkpoint_path: ***BASEDIR***/checkpoints/conv-jg-18c
+    model:
+      _target_: crims2s.training.model.conv.ConvPostProcessingJG
+      in_features: 18
+      embedding_size: 128
+      kernel_size: 
+        - 3
+        - 3
+        - 3
+weight_model:
+  _target_: crims2s.training.model.bayes.BiheadedWeightModel
+  in_features: 18
+  out_features: 10
+  embedding_size: 128
+  global_branch: True
+  dropout: 0.05
+  moments: False
+  variable_branch_blocks: 4
+  flatten_time: True

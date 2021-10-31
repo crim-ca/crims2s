@@ -10,7 +10,7 @@ hydra:
     subdir: ${hydra.job.num}
 
 num_workers: ${oc.env:SLURM_CPUS_PER_TASK,4}
-begin: 2018
+begin: 2000
 end: 2021
 
 checkpoint_dir: ???
