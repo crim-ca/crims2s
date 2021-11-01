@@ -9,4 +9,9 @@ optim_spec:
     lr: 1e-5
     weight_decay: 1e-6
     params:
+      - _regex_: forecast_models.4
+        lr: 1e-4
       - _regex_: weight_model
+        lr: 1e-5
+      - _regex_: forecast_models
+        lr: 1e-6

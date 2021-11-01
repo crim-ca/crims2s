@@ -28,5 +28,5 @@ transform:
 
 timeout_min: 2880
 
-batch_size: 2
+batch_size: 4
 accumulate_grad_batches: 2
