@@ -1,7 +1,7 @@
 defaults:
   - set: train
 
-base_dir: ***HOME***fast_scratch/s2s/repro
+base_dir: ???
 
 
 fields:

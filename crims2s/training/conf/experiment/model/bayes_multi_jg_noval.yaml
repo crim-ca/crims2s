@@ -6,20 +6,20 @@ forecast_models:
     model:
       _target_: crims2s.training.model.bayes.RollingECMWFWrapper
     remove_prefix: model.
-    checkpoint_path: ***BASEDIR***/runs/train/outputs/2021-10-30/15-31-50
+    checkpoint_path: ${env:S2S_RUNS}/train/outputs/2021-10-30/15-31-50
   - _target_: crims2s.training.model.util.ModelWithCheckpoint
     model:
       _target_: crims2s.training.model.bayes.RollingECCCWrapper
     remove_prefix: model.
-    checkpoint_path: ***BASEDIR***/runs/train/outputs/2021-10-30/15-41-32
+    checkpoint_path: ${env:S2S_RUNS}/train/outputs/2021-10-30/15-41-32
   - _target_: crims2s.training.model.util.ModelWithCheckpoint
     model:
       _target_: crims2s.training.model.bayes.RollingNCEPWrapper
     remove_prefix: model.
-    checkpoint_path: ***BASEDIR***/runs/train/outputs/2021-10-30/15-37-14
+    checkpoint_path: ${env:S2S_RUNS}/train/outputs/2021-10-30/15-37-14
   - _target_: crims2s.training.model.util.ModelWithCheckpoint
     remove_prefix: model.
-    checkpoint_path: ***BASEDIR***/checkpoints/conv-jg-18c
+    checkpoint_path: ${env:CHECKPOINT_DIR}/conv-jg-18c
     model:
       _target_: crims2s.training.model.conv.ConvPostProcessingJG
       in_features: 18

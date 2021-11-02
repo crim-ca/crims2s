@@ -1,5 +1,5 @@
 defaults:
-  - dataset: ncep
+  - dataset: repro
   - module: tercile
   - model: conv_JG
   - optimizer: adam
